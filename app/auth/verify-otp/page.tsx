@@ -148,7 +148,7 @@ function VerifyOtpPageContent() {
 
   return (
     <div className="flex min-h-screen items-center justify-center bg-background p-4">
-      <div className="w-full max-w-md">
+      <div className="w-full max-w-sm sm:max-w-md mx-auto">
         <div className="mb-8 text-center">
           <div className="inline-flex">
             <AppLogo showTagline />
@@ -209,12 +209,23 @@ function VerifyOtpPageContent() {
                     onChange={(value) => setOtp(value)}
                     className="flex justify-center"
                   >
-                    <InputOTPGroup className="flex justify-center gap-3" dir="ltr">
+                    <InputOTPGroup
+                      className="flex justify-center gap-2 sm:gap-3 px-2"
+                      dir="ltr"
+                    >
                       {[0, 1, 2, 3, 4, 5].map((index) => (
                         <InputOTPSlot
                           key={index}
                           index={index}
-                          className="h-14 w-14 rounded-xl border border-green-300 text-center text-xl font-bold shadow-sm focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
+                          className="
+          h-10 w-10
+          sm:h-12 sm:w-12
+          md:h-14 md:w-14
+          rounded-xl border border-green-300
+          text-center text-base sm:text-lg md:text-xl
+          font-bold shadow-sm
+          focus:border-green-600 focus:ring-2 focus:ring-green-600/20
+        "
                         />
                       ))}
                     </InputOTPGroup>
