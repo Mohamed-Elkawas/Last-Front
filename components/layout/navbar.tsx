@@ -84,7 +84,7 @@ export function Navbar() {
   return (
     <>
       {/* Top Navbar */}
-      <header className="sticky top-0 z-50 w-full border-b border-border bg-card">
+     <header className="hidden lg:block sticky top-0 z-50 w-full border-b border-border bg-card">
         <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-3 sm:px-6">
           {/* Left */}
           <div className="flex items-center gap-3">
