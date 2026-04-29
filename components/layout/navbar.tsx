@@ -57,7 +57,7 @@ export function Navbar() {
   const ready = authHasHydrated && languageHasHydrated && pointsHydrated
   if (!ready) return null
 
-  const myTournamentsLabel = t("common.myTournaments")   || "My Tournaments"
+  const myTournamentsLabel = t("common.myTournaments") || "My Tournaments"
 
   const navLinks = isOwnerSession
     ? [
@@ -72,18 +72,18 @@ export function Navbar() {
         { href: "/playgrounds", label: t("common.playgrounds"), icon: MapPin },
         { href: "/tournaments", label: t("common.tournaments"), icon: Trophy },
         { href: "/my-tournaments", label: myTournamentsLabel, icon: Trophy },
-
         { href: "/bookings", label: t("common.myBookings"), icon: Calendar },
       ]
 
   return (
     <header className="sticky top-0 z-50 w-full border-b border-border bg-card">
-      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between px-6">
-        <div className="flex items-center gap-8">
-          <div aria-label={t("common.appName")}>
+      <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-2 px-3 sm:px-6">
+        <div className="flex min-w-0 items-center gap-3 md:gap-8">
+          <div className="shrink-0" aria-label={t("common.appName")}>
             <AppLogo />
           </div>
 
+          {/* Desktop nav */}
           <nav className="hidden items-center gap-1 md:flex">
             {navLinks.map((link) => {
               const Icon = link.icon
@@ -108,19 +108,53 @@ export function Navbar() {
               )
             })}
           </nav>
+
+          {/* Mobile nav icons */}
+          <nav className="flex items-center gap-1 md:hidden">
+            {navLinks.slice(0, 3).map((link) => {
+              const Icon = link.icon
+              const isActive =
+                pathname === link.href ||
+                (link.href !== "/" && pathname.startsWith(`${link.href}/`))
+
+              return (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  aria-label={link.label}
+                  className={cn(
+                    "flex h-9 w-9 items-center justify-center rounded-full transition-colors",
+                    isActive
+                      ? "bg-accent text-primary"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
+                  )}
+                >
+                  <Icon className="h-5 w-5" />
+                </Link>
+              )
+            })}
+          </nav>
         </div>
 
-        <div className="flex items-center gap-3">
+        <div className="flex shrink-0 items-center gap-1.5 sm:gap-3">
           {isAuthenticated ? (
             <>
-              <div className="flex items-center gap-2 rounded-full bg-accent px-3 py-1.5">
-                <Star className="h-4 w-4 fill-primary text-primary" />
+              <div className="flex h-9 items-center gap-1.5 rounded-full bg-accent px-2 sm:px-3">
+                <Star className="h-4 w-4 shrink-0 fill-primary text-primary" />
                 <span className="text-sm font-semibold text-primary">
-                  {pointsBalance.toLocaleString()} {t("common.points")}
+                  {pointsBalance.toLocaleString()}
+                </span>
+                <span className="hidden text-sm font-semibold text-primary sm:inline">
+                  {t("common.points")}
                 </span>
               </div>
 
-              <Button variant="ghost" size="icon" className="relative" asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="relative h-9 w-9"
+                asChild
+              >
                 <Link
                   href="/notifications"
                   aria-label={t("navbar.unreadNotifications", {
@@ -138,7 +172,12 @@ export function Navbar() {
 
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="ghost" size="icon" aria-label={t("navbar.profileMenu")}>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-9 w-9"
+                    aria-label={t("navbar.profileMenu")}
+                  >
                     <Menu className="h-5 w-5" />
                   </Button>
                 </DropdownMenuTrigger>
@@ -231,10 +270,12 @@ export function Navbar() {
           ) : (
             <>
               <LanguageToggleButton />
-              <Button variant="ghost" asChild>
+
+              <Button variant="ghost" size="sm" asChild>
                 <Link href={AUTH_ROUTES.signIn.player}>{t("auth.signIn")}</Link>
               </Button>
-              <Button asChild>
+
+              <Button size="sm" asChild>
                 <Link href={AUTH_ROUTES.signUp.player}>{t("auth.createAccount")}</Link>
               </Button>
             </>
