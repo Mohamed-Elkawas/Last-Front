@@ -109,6 +109,21 @@ async function mockHandler<T>(url: string, options: RequestInit = {}): Promise<T
     } as T
   }
 
+  // ================= POINTS =================
+  if (url === "/api/points/me" || url === "/points/me") {
+    return {
+      isSuccess: true,
+      message: null,
+      data: {
+        points: 0,
+        totalPoints: 0,
+        level: 1,
+        rank: "Beginner",
+      },
+      errors: null,
+    } as T
+  }
+
   // ================= PLAYGROUNDS =================
   if (url.includes("/playgrounds") || url.includes("/api/playgrounds")) {
     return {
@@ -260,7 +275,14 @@ async function mockHandler<T>(url: string, options: RequestInit = {}): Promise<T
     } as T
   }
 
-  throw new Error(`Mock not implemented for: ${url}`)
+  console.warn(`[MOCK MODE] Missing mock for: ${url}`)
+
+  return {
+    isSuccess: true,
+    message: null,
+    data: null,
+    errors: null,
+  } as T
 }
 
 function parseApiResponse(text: string): unknown {
