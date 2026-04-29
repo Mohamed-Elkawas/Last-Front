@@ -58,6 +58,13 @@ export function SignUpPageContent() {
     if (!formData.username.trim()) return "اسم المستخدم مطلوب"
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) return "البريد الإلكتروني غير صحيح"
     if (!/^01[0-9]{9}$/.test(formData.phone.trim())) return "رقم الهاتف يجب أن يكون 11 رقم ويبدأ بـ 01"
+
+    if (!formData.age.trim()) return "العمر مطلوب"
+    if (Number(formData.age) < 10) return "العمر غير صحيح"
+
+    if (!formData.gender.trim()) return "النوع مطلوب"
+    if (!formData.address.trim()) return "العنوان مطلوب"
+
     if (!formData.password || formData.password.length < 6) return "كلمة المرور يجب ألا تقل عن 6 أحرف"
     return ""
   }
@@ -92,6 +99,10 @@ export function SignUpPageContent() {
         username: formData.username.trim(),
         email: formData.email.trim().toLowerCase(),
         phone: formData.phone.trim(),
+        age: Number(formData.age),
+        gender: formData.gender,
+        address: formData.address.trim(),
+        joinedAt: new Date().toISOString(),
         position: formData.position,
         skillLevel: Number(formData.skillLevel),
       })
@@ -103,6 +114,12 @@ export function SignUpPageContent() {
         email: formData.email.trim().toLowerCase(),
         phone: formData.phone.trim(),
         password: formData.password,
+
+        age: Number(formData.age),
+        gender: formData.gender,
+        address: formData.address.trim(),
+        joinedAt: new Date().toISOString(),
+
         position: formData.position,
         skillLevel: Number(formData.skillLevel),
       })
@@ -125,7 +142,7 @@ export function SignUpPageContent() {
       router.push(`${AUTH_ROUTES.verifyOtp}?purpose=register&type=player`)
     } catch (err) {
       console.error("[Signup] Error during registration:", err)
-      
+
       let errorMessage = "حدث خطأ أثناء إنشاء الحساب"
 
       if (err instanceof TypeError && err.message.includes("fetch")) {
@@ -309,11 +326,12 @@ export function SignUpPageContent() {
                         <Input
                           id="age"
                           type="number"
-                          min="1"
+                          min="10"
                           placeholder="##"
                           className="ps-10"
                           value={formData.age}
                           onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                          required
                         />
                       </div>
                     </div>
@@ -324,9 +342,10 @@ export function SignUpPageContent() {
                         id="gender"
                         value={formData.gender}
                         onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                        required
                         className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
                       >
-                        <option value="">{t("auth.selectGender")}</option>
+                        <option value="" disabled>{t("auth.selectGender")}</option>
                         <option value="male">{t("auth.male")}</option>
                         <option value="female">{t("auth.female")}</option>
                       </select>
@@ -344,6 +363,7 @@ export function SignUpPageContent() {
                         className="ps-10"
                         value={formData.address}
                         onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                        required
                       />
                     </div>
                   </div>
@@ -407,11 +427,10 @@ export function SignUpPageContent() {
                           key={level}
                           type="button"
                           onClick={() => setFormData({ ...formData, skillLevel: level })}
-                          className={`flex h-12 w-12 items-center justify-center rounded-lg border-2 text-lg font-semibold transition-colors ${
-                            formData.skillLevel >= level
-                              ? "border-primary bg-primary text-primary-foreground"
-                              : "border-muted bg-card hover:bg-accent"
-                          }`}
+                          className={`flex h-12 w-12 items-center justify-center rounded-lg border-2 text-lg font-semibold transition-colors ${formData.skillLevel >= level
+                            ? "border-primary bg-primary text-primary-foreground"
+                            : "border-muted bg-card hover:bg-accent"
+                            }`}
                         >
                           {level}
                         </button>

@@ -1,5 +1,5 @@
 import type { PersistedBooking } from '@/lib/types/booking'
-import { BookingService } from '@/lib/services/booking.service'
+import { getPersistedBookings } from '@/lib/services/bookings.service'
 import { useAppStore } from '@/lib/stores/app.store'
 import { mockDelay } from '@/lib/services/mock-delay'
 
@@ -78,7 +78,9 @@ export class QRCheckInService {
     }
     
     // Get booking
-    const booking = await BookingService.getBookingById(qrData.bookingId)
+const booking = getPersistedBookings().find(
+  (b) => b.id === qrData.bookingId
+)
     if (!booking) {
       return {
         success: false,

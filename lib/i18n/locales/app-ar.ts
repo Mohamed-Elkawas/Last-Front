@@ -20,6 +20,7 @@ export const appAr = {
 
   notifications: {
     title: "الإشعارات",
+    settingsTitle: "إعدادات الإشعارات",
     unreadOne: "لديك إشعار واحد غير مقروء",
     unreadMany: "لديك {count} إشعارات غير مقروءة",
     allCaughtUp: "لا توجد إشعارات جديدة",
@@ -30,47 +31,25 @@ export const appAr = {
     newest: "الأحدث",
     oldest: "الأقدم",
     unread: "غير المقروء",
+
     preferencesTitle: "تفضيلات الإشعارات",
-    matchReminders: "تذكير المباريات",
-    matchRemindersDesc: "تنبيهات قبل حجوزاتك وأوقات انطلاق المباراة",
-    tournamentUpdates: "تحديثات البطولات",
-    tournamentUpdatesDesc: "القرعات والجداول والنتائج للبطولات التي تتابعها",
-    friendRequests: "طلبات الصداقة",
-    friendRequestsDesc: "عندما يريد أحدهم التواصل معك على المنصة",
-    paymentUpdates: "المدفوعات والاسترداد",
-    paymentUpdatesDesc: "تأكيدات الدفع والإيصالات وحالة الاسترداد",
-    promotional: "نصائح وعروض",
-    promotionalDesc: "نصائح للمنتج وعروض مختارة بعناية",
-    bookingEvents: "أحداث الحجوزات",
-    bookingEventsDesc: "إنشاء وإلغاء الحجز وحالة الدفع وتحديثات الحجز",
-    tournamentEvents: "أحداث البطولات",
-    tournamentEventsDesc: "الانضمام للبطولات وأي تحديثات مرتبطة بها",
-    ownerEvents: "قرارات المالك",
-    ownerEventsDesc: "الموافقة أو الرفض من المالك/الإدارة",
-    systemEvents: "رسائل النظام",
-    systemEventsDesc: "تنبيهات مهمة على مستوى الحساب أو التطبيق",
+
+    bookingEvents: "إشعارات الحجز",
+    bookingEventsDesc: "تنبيهات إنشاء الحجز، الإلغاء، الدفع، وحالة الطلب.",
+
+    tournamentEvents: "إشعارات البطولات",
+    tournamentEventsDesc: "تنبيهات الانضمام للبطولات وأي تحديثات مرتبطة بها.",
+
+    ownerEvents: "إشعارات المالك",
+    ownerEventsDesc: "تنبيهات الموافقة أو الرفض وطلبات إدارة الملاعب.",
+
+    systemEvents: "إشعارات النظام",
+    systemEventsDesc: "تنبيهات عامة ومهمة مرتبطة بالحساب أو التطبيق.",
+
     clearAll: "مسح الكل",
     viewAction: "فتح",
     emptyTitle: "لا توجد إشعارات",
     emptySubtitle: "عندما يحدث شيء مهم سيظهر هنا.",
-    mock1Title: "تم استلام الدفع",
-    mock1Message: "تم تأكيد دفعتك 400 جنيه لبطولة الربيع.",
-    mock1Time: "منذ ساعتين",
-    mock2Title: "تذكير بموعد المباراة",
-    mock2Message: "حجزك في النادي الأهلي غدًا الساعة 6:00 مساءً.",
-    mock2Time: "منذ 5 ساعات",
-    mock3Title: "تحديث بطولة",
-    mock3Message: "أصبحت جداول بطولة الربيع 2026 متاحة الآن.",
-    mock3Time: "منذ يوم",
-    mock4Title: "طلب صداقة",
-    mock4Message: "محمد سعيد (@mohamed_s) يريد إضافتك كصديق.",
-    mock4Time: "منذ يومين",
-    mock5Title: "تم إلغاء الحجز",
-    mock5Message: "تم إلغاء حجزك في زمالك أرينا في 10 أبريل. جاري معالجة الاسترداد.",
-    mock5Time: "منذ 3 أيام",
-    mock6Title: "تم إرسال الاسترداد",
-    mock6Message: "استردادك 300 جنيه في الطريق ويصل خلال 3 إلى 5 أيام عمل.",
-    mock6Time: "منذ 4 أيام",
   },
 
   matchCreate: {
@@ -362,5 +341,7 @@ export const appAr = {
     continueArrow: "متابعة",
     backArrow: "رجوع",
     signInPrompt: "تسجيل الدخول",
+    
   },
 } as const
+

@@ -5,6 +5,10 @@ export const en = {
     playgrounds: "Playgrounds",
     tournaments: "Tournaments",
     myBookings: "My Bookings",
+
+    // ✅ FIX
+    myTournaments: "My Tournaments",
+
     favorites: "Favorites",
     profile: "Profile",
     notifications: "Notifications",
@@ -71,7 +75,7 @@ export const en = {
     close: "Close",
   },
 
-  navbar: {
+   navbar: {
     profileMenu: "Profile Menu",
     unreadNotifications: "{count} unread notifications",
   },
@@ -110,7 +114,7 @@ export const en = {
     upcomingTournaments: "Upcoming Tournaments",
     upcomingTournamentsSub: "Compete and earn points",
     startFriendlyMatch: "Start a Friendly Match",
-    startFriendlyMatchSub: "Create a match and invite your friends to play",
+    startFriendlyMatchSub: "Create a match a  nd invite your friends to play",
     joinATournament: "Join a Tournament",
     joinATournamentSub: "Compete with others and win prizes",
     logoTagline: "Football Booking",
@@ -157,7 +161,7 @@ export const en = {
     awaitingOwnerHint: "The venue will confirm your booking soon.",
     paymentSubmittedHint: "Your payment proof was received and is being reviewed.",
     completePayment: "Complete payment",
-    viewDetails: "View details",
+    viewDetacommonils: "View details",
   },
 
   ownerPortal: {
@@ -529,6 +533,13 @@ export const en = {
     requiredTitle: "Sign in required",
     requiredDescription: "You need to sign in first to continue",
     requiredFootnote: "Creating an account takes less than a minute",
+    verifyResetOtpTitle: "Verify password reset code",
+    verifyResetOtpDescription: "Enter the 6-digit code sent to your email",
+    pendingVerificationMissing: "Verification data is missing. Please go back and try again.",
+    pendingVerificationInvalid: "Could not read verification data.",
+    verificationCode: "Verification Code",
+    enterSixDigitCode: "Enter the 6-digit code",
+    backToForgotPassword: "Back to forgot password",
   },
 
   playgrounds: {
@@ -548,10 +559,14 @@ export const en = {
     priceUnit: "EGP/hr",
   },
 
-  tournaments: {
+ tournaments: {
     title: "Tournaments",
     subtitle: "Compete with other teams and win amazing prizes",
     searchPlaceholder: "Search tournaments...",
+
+    // ✅ FIX
+    live: "Live",
+
     all: "All",
     open: "Open",
     full: "Full",
@@ -619,7 +634,7 @@ export const en = {
 
   ownerAnalytics: {
     todayBookings: "Today's Bookings",
-    totalBookings: "Total Bookings", 
+    totalBookings: "Total Bookings",
     noShowRate: "No-Show Rate",
     utilizationRate: "Utilization Rate",
     viewDetails: "View Details",

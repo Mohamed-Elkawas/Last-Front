@@ -4,6 +4,7 @@ import { QRCodeCanvas } from "qrcode.react"
 import { useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
+import { useRouter } from "next/navigation"
 import { Calendar, Clock, MapPin, X, AlertCircle, QrCode } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
@@ -30,6 +31,7 @@ interface BookingCardProps {
 }
 
 function BookingCard({ booking, onCancel, canCancel }: BookingCardProps) {
+  const router = useRouter()
   const [showCancelDialog, setShowCancelDialog] = useState(false)
   const { t, isArabic, language } = useAppTranslations()
 
@@ -38,8 +40,10 @@ function BookingCard({ booking, onCancel, canCancel }: BookingCardProps) {
       ? booking.playground?.name[language] || t("common.playground")
       : booking.tournament?.name[language] || t("common.tournament")
 
-  const location = booking.playground?.location[language]
-  const date = booking.playground?.dateLabel
+  const location =
+    booking.kind === "playground" ? booking.playground?.location[language] : ""
+
+  const date = booking.kind === "playground" ? booking.playground?.dateLabel : ""
 
   const image =
     booking.kind === "playground"
@@ -53,7 +57,7 @@ function BookingCard({ booking, onCancel, canCancel }: BookingCardProps) {
 
   const remainingSeconds = Math.max(
     Math.floor((booking.expiresAt - Date.now()) / 1000),
-    0
+    0,
   )
 
   const statusColors: Record<string, string> = {
@@ -91,6 +95,31 @@ function BookingCard({ booking, onCancel, canCancel }: BookingCardProps) {
     booking.status === "confirmed" &&
     !booking.playedAt
 
+const canContinuePayment =
+  booking.status === "pending_payment" &&
+  ((booking.kind === "playground" && Boolean(booking.playground?.id)) ||
+    (booking.kind === "tournament" && Boolean(booking.tournament?.id)))
+
+ const handleContinuePayment = () => {
+  if (booking.status !== "pending_payment") return
+
+  if (booking.kind === "playground" && booking.playground?.id) {
+    router.push(
+      `/playgrounds/${booking.playground.id}/book/payment?bookingId=${booking.id}`,
+    )
+    return
+  }
+
+  if (booking.kind === "tournament" && booking.tournament?.id) {
+    const method =
+      booking.paymentMethod === "instapay" ? "instapay" : "vodafone_cash"
+
+    router.push(
+      `/tournaments/${booking.tournament.id}/join/payment?registrationId=${booking.id}&method=${method}`,
+    )
+  }
+}
+
   return (
     <Card className="overflow-hidden transition-shadow hover:shadow-md">
       <CardContent className="p-0">
@@ -126,10 +155,14 @@ function BookingCard({ booking, onCancel, canCancel }: BookingCardProps) {
                   </div>
                 )}
 
-                {booking.playground?.slots && (
+                {booking.kind === "playground" && booking.playground?.slots && (
                   <div className="flex items-center gap-1.5 text-muted-foreground">
                     <Clock className="h-4 w-4" />
-                    <span>{booking.playground.slots}</span>
+                    <span>
+                      {booking.playground.slots
+                        .map((slot) => `${slot.startTime} - ${slot.endTime}`)
+                        .join(", ") || "-"}
+                    </span>
                   </div>
                 )}
 
@@ -148,7 +181,7 @@ function BookingCard({ booking, onCancel, canCancel }: BookingCardProps) {
                     <span>
                       {t("bookings.paymentWindowLeft", {
                         time: `${Math.floor(remainingSeconds / 60)}:${String(
-                          remainingSeconds % 60
+                          remainingSeconds % 60,
                         ).padStart(2, "0")}`,
                       })}
                     </span>
@@ -216,6 +249,16 @@ function BookingCard({ booking, onCancel, canCancel }: BookingCardProps) {
               </div>
 
               <div className="flex flex-wrap items-center justify-end gap-2">
+                {canContinuePayment && (
+                  <Button
+                    size="sm"
+                    className="bg-emerald-600 text-white hover:bg-emerald-700"
+                    onClick={handleContinuePayment}
+                  >
+                    استكمال الدفع
+                  </Button>
+                )}
+
                 {canCancel(booking) && (
                   <Dialog
                     open={showCancelDialog}

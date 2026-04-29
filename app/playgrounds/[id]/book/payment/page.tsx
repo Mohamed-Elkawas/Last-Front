@@ -3,56 +3,103 @@
 import { Suspense, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
 import { useSearchParams, useParams, useRouter } from "next/navigation"
-import { ArrowLeft, CreditCard, Wallet, Upload, AlertCircle, Clock } from "lucide-react"
+import { ArrowLeft, Clock, Upload } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
 import { AppShell } from "@/components/layout/app-shell"
 import { AuthRequiredDialog } from "@/components/auth/auth-required-dialog"
 import { useTranslate } from "@/hooks/use-translate"
 import { useRequireAuth } from "@/lib/auth/require-auth"
 import { useBookingById } from "@/hooks/use-booking-by-id"
-import { submitBookingPayment, sweepBookingExpiry } from "@/lib/services/bookings.service"
+import {
+  submitBookingPayment,
+  sweepBookingExpiry,
+} from "@/lib/services/bookings.service"
 
 function PlaygroundPaymentContent() {
-  const { t, language } = useTranslate()
+  const { language } = useTranslate()
   const searchParams = useSearchParams()
   const params = useParams()
   const router = useRouter()
-  const playgroundId =
-    typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : undefined
-  const { isAuthenticated, canProceed } = useRequireAuth()
 
+  const isArabic = language === "ar"
+
+  const labels = {
+    back: isArabic ? "رجوع" : "Back",
+    loading: isArabic ? "جاري التحميل..." : "Loading...",
+    noBooking: isArabic ? "لم يتم العثور على الحجز" : "No booking found",
+    completePayment: isArabic ? "استكمال الدفع" : "Complete Payment",
+    timeLeft: isArabic ? "الوقت المتبقي" : "Time left",
+    selectedPaymentMethod: isArabic
+      ? "طريقة الدفع المختارة"
+      : "Selected payment method",
+    payerName: isArabic ? "اسم صاحب التحويل" : "Payer name",
+    vodafoneNumber: isArabic ? "رقم فودافون كاش" : "Vodafone Cash number",
+    instapayNumber: isArabic ? "رقم إنستاباي" : "Instapay number",
+    uploadTitle: isArabic
+      ? "اضغط لرفع صورة إيصال الدفع"
+      : "Click to upload payment receipt",
+    uploadHint: "PNG / JPG / JPEG",
+    submitVodafone: isArabic
+      ? "إرسال دفع فودافون كاش"
+      : "Submit Vodafone Cash payment",
+    submitInstapay: isArabic
+      ? "إرسال دفع إنستاباي"
+      : "Submit Instapay payment",
+    submitting: isArabic ? "جاري إرسال الدفع..." : "Submitting payment...",
+    requiredAlert: isArabic
+      ? "من فضلك املأ الاسم والرقم وارفع صورة إيصال الدفع"
+      : "Please enter payer name, payment number, and upload the receipt image",
+    nameLettersOnly: isArabic
+      ? "الاسم لازم يكون حروف فقط"
+      : "Name must contain letters only",
+    paymentNumberInvalid: isArabic
+      ? "رقم الدفع لازم يكون 11 رقم"
+      : "Payment number must be exactly 11 digits",
+    bookingSummary: isArabic ? "ملخص الحجز" : "Booking summary",
+    player: isArabic ? "اللاعب" : "Player",
+    phone: isArabic ? "الهاتف" : "Phone",
+    email: isArabic ? "الإيميل" : "Email",
+    total: isArabic ? "الإجمالي" : "Total",
+    egp: isArabic ? "جنيه" : "EGP",
+  }
+
+  const playgroundId =
+    typeof params.id === "string"
+      ? params.id
+      : Array.isArray(params.id)
+        ? params.id[0]
+        : undefined
+
+  const { isAuthenticated, canProceed } = useRequireAuth()
   const bookingId = searchParams.get("bookingId") || ""
-  const { booking, hasHydrated } = useBookingById(bookingId, "playground", playgroundId)
-  const method = booking?.paymentMethod ?? "vodafone"
-  const playgroundName = booking?.playground?.name[language] || t("common.playground")
-  const playgroundLocation = booking?.playground?.location[language] || ""
-  const date = booking?.playground?.date || ""
-  const dateLabel = booking?.playground?.dateLabel || ""
-  const slots = booking?.playground?.slots || ""
-  const hours = String(booking?.playground?.hours ?? 1)
-  const subtotal = String(booking?.playground?.subtotal ?? 0)
-  const pointsDiscount = String(booking?.playground?.pointsDiscount ?? 0)
-  const total = String(booking?.playground?.total ?? 0)
+
+  const { booking, hasHydrated } = useBookingById(
+    bookingId,
+    "playground",
+    playgroundId,
+  )
 
   const [isLoading, setIsLoading] = useState(false)
   const [now, setNow] = useState(Date.now())
   const [showAuthDialog, setShowAuthDialog] = useState(() => !isAuthenticated)
-  const [formData, setFormData] = useState({
-    payerName: "",
-    paymentNumber: "",
-    transactionReference: "",
-    screenshotName: "",
-  })
+
+  const [payerName, setPayerName] = useState("")
+  const [paymentNumber, setPaymentNumber] = useState("")
+  const [file, setFile] = useState<File | null>(null)
+  const [paymentMethod, setPaymentMethod] = useState<"vodafone" | "instapay">(
+    "vodafone",
+  )
 
   useEffect(() => {
     sweepBookingExpiry()
+
     const interval = setInterval(() => {
       setNow(Date.now())
       sweepBookingExpiry()
     }, 1000)
+
     return () => clearInterval(interval)
   }, [])
 
@@ -61,295 +108,224 @@ function PlaygroundPaymentContent() {
       if (playgroundId) {
         canProceed("playground_book", { playgroundId })
       }
+
       setShowAuthDialog(true)
     }
   }, [canProceed, isAuthenticated, playgroundId])
 
-  const remainingMs = booking?.expiresAt ? Math.max(booking.expiresAt - now, 0) : 0
+  useEffect(() => {
+    if (booking?.paymentMethod) {
+      setPaymentMethod(booking.paymentMethod)
+    }
+  }, [booking?.paymentMethod])
+
+  const remainingMs = booking?.expiresAt
+    ? Math.max(booking.expiresAt - now, 0)
+    : 0
+
   const isExpired = booking?.status === "expired" || remainingMs <= 0
-  const isPendingPayment = booking?.status === "pending_payment"
-  const isFormDisabled = !isPendingPayment || isExpired
-  const hasValidAmount = Number(booking?.playground?.total ?? 0) > 0
-  const hasValidPaymentMethod = method === "vodafone" || method === "instapay"
-  const canSubmitPayment =
-    Boolean(booking?.id) &&
-    isPendingPayment &&
-    !isExpired &&
-    hasValidAmount &&
-    hasValidPaymentMethod &&
-    formData.payerName.trim().length > 0 &&
-    formData.paymentNumber.trim().length > 0 &&
-    formData.transactionReference.trim().length > 0
 
   const formattedTime = useMemo(() => {
     const totalSeconds = Math.floor(remainingMs / 1000)
     const minutes = Math.floor(totalSeconds / 60)
     const seconds = totalSeconds % 60
-    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(
+      2,
+      "0",
+    )}`
   }, [remainingMs])
 
-  const handleScreenshotChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setFormData((prev) => ({ ...prev, screenshotName: file.name }))
-    }
+  if (!hasHydrated) {
+    return <AppShell>{labels.loading}</AppShell>
+  }
+
+  if (!booking) {
+    return <AppShell>{labels.noBooking}</AppShell>
+  }
+
+  if (booking.status !== "pending_payment" || isExpired) {
+    router.push("/bookings")
+    return null
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
-    if (!isAuthenticated || !canSubmitPayment || !booking) return
+
+    const cleanedName = payerName.trim()
+    const cleanedNumber = paymentNumber.trim()
+
+    if (!cleanedName || !cleanedNumber || !file) {
+      alert(labels.requiredAlert)
+      return
+    }
+
+    if (!/^[\u0600-\u06FFa-zA-Z\s]+$/.test(cleanedName)) {
+      alert(labels.nameLettersOnly)
+      return
+    }
+
+    if (!/^\d{11}$/.test(cleanedNumber)) {
+      alert(labels.paymentNumberInvalid)
+      return
+    }
 
     setIsLoading(true)
-    await submitBookingPayment(booking.id, {
-      payerName: formData.payerName.trim(),
-      paymentNumber: formData.paymentNumber.trim(),
-      transactionReference: formData.transactionReference.trim(),
-      screenshotName: formData.screenshotName,
-    })
-    setIsLoading(false)
 
-    router.push(`/playgrounds/payment-submitted?bookingId=${booking.id}`)
-  }
+    try {
+      await submitBookingPayment(booking.id, {
+        payerName: cleanedName,
+        paymentNumber: cleanedNumber,
+        transactionReference: "-",
+        screenshotName: file.name,
+      })
 
-  const methodTitle =
-    method === "vodafone" ? t("playgroundBook.vodafoneTitle") : t("playgroundBook.instapayTitle")
-  const methodIcon =
-    method === "vodafone" ? (
-      <Wallet className="h-5 w-5 text-white" />
-    ) : (
-      <CreditCard className="h-5 w-5 text-white" />
-    )
-
-  const receiverText =
-    method === "vodafone" ? t("payment.receiverVodafone") : t("payment.receiverInstapay")
-
-  if (!hasHydrated) {
-    return (
-      <AppShell>
-        <div className="mx-auto max-w-3xl px-6 py-8">
-          <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
-        </div>
-      </AppShell>
-    )
-  }
-
-  if (!booking) {
-    return (
-      <AppShell>
-        <div className="mx-auto max-w-3xl px-6 py-8">
-          <Card>
-            <CardContent className="space-y-4 p-6">
-              <p className="font-medium text-foreground">{t("bookings.noUpcomingBookings")}</p>
-              <Button asChild>
-                <Link href="/bookings">{t("common.myBookings")}</Link>
-              </Button>
-            </CardContent>
-          </Card>
-        </div>
-      </AppShell>
-    )
+      router.push(`/playgrounds/payment-submitted?bookingId=${booking.id}`)
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
     <AppShell>
       <div className="mx-auto max-w-3xl px-6 py-8">
-        <Button variant="ghost" className="mb-6 gap-2" asChild>
-          <Link href={playgroundId ? `/playgrounds/${playgroundId}/book` : "/playgrounds"}>
-            <ArrowLeft className="h-4 w-4 icon-arrow-back" />
-            {t("payment.backBooking")}
+        <Button variant="ghost" asChild className="mb-6 gap-2">
+          <Link href="/bookings">
+            <ArrowLeft className="h-4 w-4" />
+            {labels.back}
           </Link>
         </Button>
 
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">{t("payment.title")}</h1>
-          <p className="mt-2 text-muted-foreground">{playgroundName}</p>
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
+        <div className="grid gap-6 lg:grid-cols-2">
           <Card>
             <CardHeader>
-              <CardTitle>{t("payment.submitBooking")}</CardTitle>
+              <CardTitle>{labels.completePayment}</CardTitle>
             </CardHeader>
 
-            <CardContent className="space-y-6">
-              <div className="rounded-lg border bg-muted/30 p-4">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`flex h-12 w-12 items-center justify-center rounded-lg ${
-                      method === "vodafone" ? "bg-red-500" : "bg-blue-500"
-                    }`}
-                  >
-                    {methodIcon}
-                  </div>
-                  <div>
-                    <p className="font-medium">{methodTitle}</p>
-                    <p className="text-sm text-muted-foreground">{receiverText}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div
-                className={`rounded-lg border p-4 ${
-                  isExpired
-                    ? "border-destructive/30 bg-destructive/10"
-                    : "border-amber-200 bg-amber-50"
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <Clock className={`mt-0.5 h-5 w-5 shrink-0 ${isExpired ? "text-destructive" : "text-amber-600"}`} />
-                  <div>
-                    <p className={`font-medium ${isExpired ? "text-destructive" : "text-amber-800"}`}>
-                      {isExpired ? t("payment.timerExpiredTitle") : t("payment.timerActiveTitle")}
-                    </p>
-                    <p className={`text-sm ${isExpired ? "text-destructive/80" : "text-amber-700"}`}>
-                      {isExpired ? t("payment.timerExpiredBody") : t("payment.timerActiveBody", { time: formattedTime })}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-                  <div>
-                    <p className="font-medium text-amber-800">{t("payment.manualTitle")}</p>
-                    <p className="text-sm text-amber-700">{t("payment.manualBody")}</p>
-                  </div>
+            <CardContent className="space-y-5">
+              <div className="rounded-xl border p-4">
+                <div className="flex items-center gap-2 text-sm">
+                  <Clock className="h-4 w-4" />
+                  {labels.timeLeft}: {formattedTime}
                 </div>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="payerName">{t("payment.payerName")}</Label>
-                  <Input
-                    id="payerName"
-                    placeholder={t("payment.payerPh")}
-                    value={formData.payerName}
-                    onChange={(e) => setFormData({ ...formData, payerName: e.target.value })}
-                    required
-                    disabled={isFormDisabled}
-                  />
+                <div className="rounded-xl border bg-muted/40 px-4 py-3 text-sm">
+                  <p className="text-muted-foreground">
+                    {labels.selectedPaymentMethod}
+                  </p>
+
+                  <p className="mt-1 font-semibold">
+                    {booking.paymentMethod === "vodafone"
+                      ? "Vodafone Cash"
+                      : "Instapay"}
+                  </p>
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="paymentNumber">
-                    {method === "vodafone" ? t("payment.walletNumber") : t("payment.instaNumber")}
-                  </Label>
-                  <Input
-                    id="paymentNumber"
-                    placeholder={t("payment.numberPh")}
-                    value={formData.paymentNumber}
-                    onChange={(e) => setFormData({ ...formData, paymentNumber: e.target.value })}
-                    required
-                    disabled={isFormDisabled}
-                  />
-                </div>
+                <Input
+                  placeholder={labels.payerName}
+                  value={payerName}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/[0-9٠-٩]/g, "")
+                    setPayerName(value)
+                  }}
+                />
 
-                <div className="space-y-2">
-                  <Label htmlFor="transactionReference">{t("payment.transRef")}</Label>
-                  <Input
-                    id="transactionReference"
-                    placeholder={t("payment.transPh")}
-                    value={formData.transactionReference}
-                    onChange={(e) =>
-                      setFormData({ ...formData, transactionReference: e.target.value })
-                    }
-                    required
-                    disabled={isFormDisabled}
-                  />
-                </div>
+                <Input
+                  placeholder={
+                    paymentMethod === "vodafone"
+                      ? labels.vodafoneNumber
+                      : labels.instapayNumber
+                  }
+                  value={paymentNumber}
+                  inputMode="numeric"
+                  maxLength={11}
+                  onChange={(e) => {
+                    const value = e.target.value.replace(/\D/g, "").slice(0, 11)
+                    setPaymentNumber(value)
+                  }}
+                />
 
-                <div className="space-y-2">
-                  <Label>{t("payment.screenshot")}</Label>
-                  <label
-                    className={`flex items-center gap-3 rounded-lg border border-dashed p-4 ${
-                      isExpired ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-muted/30"
-                    }`}
-                  >
-                    <Upload className="h-5 w-5 shrink-0 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      {formData.screenshotName || t("payment.screenshotPh")}
+                <label className="flex cursor-pointer items-center justify-between rounded-xl border border-dashed border-emerald-300 bg-emerald-50/40 px-4 py-3 transition hover:border-emerald-500 hover:bg-emerald-50">
+                  <div className="flex items-center gap-3">
+                    <Upload className="h-5 w-5 text-emerald-600" />
+
+                    <div>
+                      <p className="text-sm font-semibold text-emerald-700">
+                        {labels.uploadTitle}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {labels.uploadHint}
+                      </p>
+                    </div>
+                  </div>
+
+                  {file && (
+                    <span className="max-w-[130px] truncate rounded-full bg-white px-3 py-1 text-xs text-emerald-700">
+                      {file.name}
                     </span>
-                    <input
-                      type="file"
-                      className="hidden"
-                      accept="image/*"
-                      onChange={handleScreenshotChange}
-                      disabled={isFormDisabled}
-                    />
-                  </label>
-                </div>
+                  )}
 
-                <Button type="submit" className="w-full" disabled={isLoading || isFormDisabled || !canSubmitPayment}>
-                  {isExpired
-                    ? t("payment.expiredCta")
-                    : !isPendingPayment
-                      ? t("payment.underReviewStatus")
-                    : isLoading
-                      ? t("payment.submitting")
-                      : t("payment.submitCta", { amount: total })}
+                  <input
+                    type="file"
+                    accept="image/png,image/jpeg,image/jpg"
+                    className="hidden"
+                    onChange={(e) => setFile(e.target.files?.[0] || null)}
+                  />
+                </label>
+
+                <Button className="w-full" disabled={isLoading}>
+                  {isLoading
+                    ? labels.submitting
+                    : paymentMethod === "vodafone"
+                      ? labels.submitVodafone
+                      : labels.submitInstapay}
                 </Button>
               </form>
             </CardContent>
           </Card>
 
-          <Card className="h-fit">
+          <Card>
             <CardHeader>
-              <CardTitle>{t("payment.summaryBooking")}</CardTitle>
+              <CardTitle>{labels.bookingSummary}</CardTitle>
             </CardHeader>
 
-            <CardContent className="space-y-3">
-              <div className="flex items-start justify-between gap-3 text-sm">
-                <span className="text-muted-foreground">{t("payment.playground")}</span>
-                <span className="text-end font-medium">{playgroundName}</span>
-              </div>
+            <CardContent className="space-y-2 text-sm">
+              <p>
+                {labels.player}: {booking.playerDisplayName || "-"}
+              </p>
+              <p>
+                {labels.phone}: {booking.playerPhone || "-"}
+              </p>
+              <p>
+                {labels.email}: {booking.playerEmail || "-"}
+              </p>
 
-              <div className="flex items-start justify-between gap-3 text-sm">
-                <span className="text-muted-foreground">{t("payment.location")}</span>
-                <span className="text-end font-medium">{playgroundLocation}</span>
-              </div>
+              <hr />
 
-              <div className="flex items-start justify-between gap-3 text-sm">
-                <span className="text-muted-foreground">{t("payment.date")}</span>
-                <span className="text-end font-medium">{dateLabel || date}</span>
-              </div>
+              <p>{booking.playground?.name[language] || "-"}</p>
+              <p>{booking.playground?.location[language] || "-"}</p>
+              <p>{booking.playground?.dateLabel || "-"}</p>
 
-              <div className="flex items-start justify-between gap-3 text-sm">
-                <span className="text-muted-foreground">{t("payment.slots")}</span>
-                <span className="text-end font-medium">{slots || "-"}</span>
-              </div>
+              <p>
+                {booking.playground?.slots
+                  ?.map((slot) => `${slot.startTime} - ${slot.endTime}`)
+                  .join(", ") || "-"}
+              </p>
 
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">{t("payment.hours")}</span>
-                <span>{hours}</span>
-              </div>
-
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">{t("payment.subtotal")}</span>
-                <span>{subtotal} {t("common.egp")}</span>
-              </div>
-
-              {Number(pointsDiscount) > 0 && (
-                <div className="flex justify-between text-sm text-primary">
-                  <span>{t("payment.pointsDiscount")}</span>
-                  <span>-{pointsDiscount} {t("common.egp")}</span>
-                </div>
-              )}
-
-              <div className="flex justify-between text-sm">
-                <span className="text-muted-foreground">{t("payment.method")}</span>
-                <span>{methodTitle}</span>
-              </div>
-
-              <div className="flex justify-between border-t pt-3">
-                <span className="font-medium">{t("payment.total")}</span>
-                <span className="text-lg font-bold text-primary">{total} {t("common.egp")}</span>
-              </div>
+              <p>
+                {labels.total}: {booking.playground?.total ?? 0} {labels.egp}
+              </p>
             </CardContent>
           </Card>
         </div>
       </div>
-      <AuthRequiredDialog open={showAuthDialog} onOpenChange={setShowAuthDialog} cancelHref="/" />
+
+      <AuthRequiredDialog
+        open={showAuthDialog}
+        onOpenChange={setShowAuthDialog}
+      />
     </AppShell>
   )
 }

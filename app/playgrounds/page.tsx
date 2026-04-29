@@ -2,7 +2,6 @@
 
 import { Suspense, useState, useMemo } from "react"
 import Image from "next/image"
-import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Search, MapPin, Star, X, ChevronDown, Heart } from "lucide-react"
 import { AuthRequiredDialog } from "@/components/auth/auth-required-dialog"
@@ -26,6 +25,8 @@ import { getDateFnsLocale } from "@/lib/i18n/date-locale"
 import { usePlaygroundsCatalog } from "@/hooks/use-playgrounds"
 import { useFavoritePlaygrounds } from "@/hooks/use-favorite-playgrounds"
 import { useRequireAuth } from "@/lib/auth/require-auth"
+import { EGYPT_GOVERNORATES } from "@/lib/constants/egypt-governorates"
+import type { EgyptGovernorateKey } from "@/lib/types/playground"
 
 const pitchSizes = ["5v5", "7v7", "11v11"]
 
@@ -34,23 +35,31 @@ function PlaygroundsPageContent() {
   const searchParams = useSearchParams()
   const initialQuery = searchParams.get("q") || ""
   const { t, language } = useTranslate()
-  const { playgrounds: allPlaygrounds, loading: catalogLoading } = usePlaygroundsCatalog()
   const { isFavorite, toggleFavorite, hasHydrated: favoritesHydrated } = useFavoritePlaygrounds()
   const { canProceed } = useRequireAuth()
   const dateLocale = useMemo(() => getDateFnsLocale(language), [language])
-  const [showAuthDialog, setShowAuthDialog] = useState(false)
 
-  const cityOptions = useMemo(
-    () => [
-      { value: "All", label: t("playgroundsUi.cityAll") },
-      { value: "Cairo", label: t("playgroundsUi.cityCairo") },
-      { value: "Giza", label: t("playgroundsUi.cityGiza") },
-      { value: "Alexandria", label: t("playgroundsUi.cityAlex") },
-      { value: "Nasr City", label: t("playgroundsUi.cityNasr") },
-      { value: "Mohandessin", label: t("playgroundsUi.cityMoh") },
-    ],
-    [t]
+  const [showAuthDialog, setShowAuthDialog] = useState(false)
+  const [searchQuery, setSearchQuery] = useState(initialQuery)
+  const [selectedGovernorate, setSelectedGovernorate] =
+    useState<EgyptGovernorateKey>("all")
+  const [selectedSizes, setSelectedSizes] = useState<string[]>([])
+  const [selectedDate, setSelectedDate] = useState<Date>()
+  const [selectedTime, setSelectedTime] = useState("all")
+  const [sortBy, setSortBy] = useState("relevance")
+
+  const playgroundQuery = useMemo(
+    () => ({
+      search: searchQuery,
+      governorateKey:
+        selectedGovernorate === "all" ? undefined : selectedGovernorate,
+      pitchSizes: selectedSizes,
+    }),
+    [searchQuery, selectedGovernorate, selectedSizes],
   )
+
+  const { playgrounds: allPlaygrounds, loading: catalogLoading } =
+    usePlaygroundsCatalog(playgroundQuery)
 
   const timeOptions = useMemo(
     () => [
@@ -60,7 +69,7 @@ function PlaygroundsPageContent() {
       { value: "evening", label: t("playgroundsUi.timeEvening") },
       { value: "night", label: t("playgroundsUi.timeNight") },
     ],
-    [t]
+    [t],
   )
 
   const sortOptions = useMemo(
@@ -70,59 +79,51 @@ function PlaygroundsPageContent() {
       { value: "price-high", label: t("playgroundsUi.sortPriceHigh") },
       { value: "rating", label: t("playgroundsUi.sortRating") },
     ],
-    [t]
+    [t],
   )
 
-  const [searchQuery, setSearchQuery] = useState(initialQuery)
-  const [selectedCity, setSelectedCity] = useState("All")
-  const [selectedSizes, setSelectedSizes] = useState<string[]>([])
-  const [selectedDate, setSelectedDate] = useState<Date>()
-  const [selectedTime, setSelectedTime] = useState("all")
-  const [sortBy, setSortBy] = useState("relevance")
-
   const filteredAndSortedPlaygrounds = useMemo(() => {
-    let results = allPlaygrounds.filter((playground) => {
-      const name = playground.name[language].toLowerCase()
-      const loc = playground.location[language].toLowerCase()
-      const q = searchQuery.toLowerCase()
-      const matchesSearch = name.includes(q) || loc.includes(q)
-      const matchesCity = selectedCity === "All" || playground.cityKey === selectedCity
-      const matchesSize =
-        selectedSizes.length === 0 || selectedSizes.some((size) => playground.pitchSizes.includes(size))
-      return matchesSearch && matchesCity && matchesSize
-    })
+    let results = [...allPlaygrounds]
 
     switch (sortBy) {
       case "price-low":
-        results = [...results].sort((a, b) => a.price.min - b.price.min)
+        results.sort((a, b) => a.price.min - b.price.min)
         break
       case "price-high":
-        results = [...results].sort((a, b) => b.price.max - a.price.max)
+        results.sort((a, b) => b.price.max - a.price.max)
         break
       case "rating":
-        results = [...results].sort((a, b) => b.rating - a.rating)
+        results.sort((a, b) => b.rating - a.rating)
         break
       default:
         break
     }
 
     return results
-  }, [allPlaygrounds, language, searchQuery, selectedCity, selectedSizes, sortBy])
+  }, [allPlaygrounds, sortBy])
 
   const toggleSize = (size: string) => {
-    setSelectedSizes((prev) => (prev.includes(size) ? prev.filter((s) => s !== size) : [...prev, size]))
+    setSelectedSizes((prev) =>
+      prev.includes(size) ? prev.filter((s) => s !== size) : [...prev, size],
+    )
   }
 
   const clearFilters = () => {
     setSearchQuery("")
-    setSelectedCity("All")
+    setSelectedGovernorate("all")
     setSelectedSizes([])
     setSelectedDate(undefined)
     setSelectedTime("all")
     setSortBy("relevance")
   }
 
-  const hasActiveFilters = selectedCity !== "All" || selectedSizes.length > 0 || selectedDate || selectedTime !== "all"
+  const hasActiveFilters =
+    searchQuery.trim() !== "" ||
+    selectedGovernorate !== "all" ||
+    selectedSizes.length > 0 ||
+    Boolean(selectedDate) ||
+    selectedTime !== "all"
+
   const handleBookNow = (playgroundId: string) => {
     if (!canProceed("playground_book", { playgroundId })) {
       setShowAuthDialog(true)
@@ -149,8 +150,12 @@ function PlaygroundsPageContent() {
     <AppShell>
       <div className="mx-auto max-w-7xl px-6 py-8">
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">{t("playgrounds.title")}</h1>
-          <p className="mt-2 text-muted-foreground">{t("playgrounds.subtitle")}</p>
+          <h1 className="text-3xl font-bold text-foreground">
+            {t("playgrounds.title")}
+          </h1>
+          <p className="mt-2 text-muted-foreground">
+            {t("playgrounds.subtitle")}
+          </p>
         </div>
 
         <div className="mb-8 space-y-5">
@@ -166,26 +171,33 @@ function PlaygroundsPageContent() {
           </div>
 
           <div className="flex flex-wrap items-center gap-4">
-            <div className="flex flex-wrap items-center gap-2">
-              {cityOptions.map((city) => (
-                <Button
-                  key={city.value}
-                  variant={selectedCity === city.value ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSelectedCity(city.value)}
-                  className="h-9 rounded-full"
-                >
-                  {city.label}
-                </Button>
-              ))}
-            </div>
+            <Select
+  value={selectedGovernorate}
+  onValueChange={(value) =>
+    setSelectedGovernorate(value as EgyptGovernorateKey)
+  }
+>
+  <SelectTrigger className="h-9 w-[200px] rounded-full sm:w-[220px]">
+    <SelectValue placeholder={t("playgrounds.selectGovernorate")} />
+  </SelectTrigger>
+
+  <SelectContent>
+    {EGYPT_GOVERNORATES.map((governorate) => (
+      <SelectItem key={governorate.key} value={governorate.key}>
+        {language === "ar" ? governorate.ar : governorate.en}
+      </SelectItem>
+    ))}
+  </SelectContent>
+</Select>
 
             <div className="hidden h-6 w-px bg-border sm:block" />
 
             <Popover>
               <PopoverTrigger asChild>
                 <Button variant="outline" size="sm" className="h-9 gap-2 rounded-full">
-                  {selectedDate ? format(selectedDate, "MMM d, yyyy", { locale: dateLocale }) : t("playgrounds.selectDate")}
+                  {selectedDate
+                    ? format(selectedDate, "MMM d, yyyy", { locale: dateLocale })
+                    : t("playgrounds.selectDate")}
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </PopoverTrigger>
@@ -215,7 +227,10 @@ function PlaygroundsPageContent() {
           </div>
 
           <div className="flex flex-wrap items-center gap-3">
-            <span className="text-sm font-medium text-muted-foreground">{t("playgrounds.pitchSize")}</span>
+            <span className="text-sm font-medium text-muted-foreground">
+              {t("playgrounds.pitchSize")}
+            </span>
+
             {pitchSizes.map((size) => (
               <Button
                 key={size}
@@ -229,7 +244,12 @@ function PlaygroundsPageContent() {
             ))}
 
             {hasActiveFilters && (
-              <Button variant="ghost" size="sm" onClick={clearFilters} className="ms-auto gap-2 text-muted-foreground hover:text-foreground">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={clearFilters}
+                className="ms-auto gap-2 text-muted-foreground hover:text-foreground"
+              >
                 <X className="h-4 w-4" />
                 {t("playgrounds.clearFilters")}
               </Button>
@@ -241,9 +261,12 @@ function PlaygroundsPageContent() {
           <p className="text-sm text-muted-foreground">
             {t("playgrounds.resultsCount", { count, suffix: resultsSuffix })}
           </p>
+
           <Select value={sortBy} onValueChange={setSortBy}>
             <SelectTrigger className="h-9 w-full rounded-lg sm:w-[220px]">
-              <span className="text-sm text-muted-foreground">{t("playgrounds.sortBy")}</span>
+              <span className="text-sm text-muted-foreground">
+                {t("playgrounds.sortBy")}
+              </span>
               <SelectValue />
             </SelectTrigger>
             <SelectContent align="end">
@@ -259,8 +282,12 @@ function PlaygroundsPageContent() {
         <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           {filteredAndSortedPlaygrounds.map((playground) => {
             const favorite = isFavorite(playground.id)
+
             return (
-              <Card key={playground.id} className="group overflow-hidden bg-card transition-shadow hover:shadow-lg">
+              <Card
+                key={playground.id}
+                className="group overflow-hidden bg-card transition-shadow hover:shadow-lg"
+              >
                 <div className="relative h-44 overflow-hidden">
                   <Image
                     src={playground.imageUrl}
@@ -268,6 +295,7 @@ function PlaygroundsPageContent() {
                     fill
                     className="object-cover transition-transform duration-300 group-hover:scale-105"
                   />
+
                   <button
                     type="button"
                     onClick={(e) => {
@@ -277,25 +305,34 @@ function PlaygroundsPageContent() {
                     className="absolute end-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 shadow-sm transition-all hover:scale-110"
                   >
                     <Heart
-                      className={`h-5 w-5 transition-colors ${
-                        favorite ? "fill-primary text-primary" : "text-muted-foreground"
-                      }`}
+                      className={`h-5 w-5 transition-colors ${favorite
+                          ? "fill-primary text-primary"
+                          : "text-muted-foreground"
+                        }`}
                     />
                   </button>
+
                   <div className="absolute bottom-3 start-3 flex items-center gap-1 rounded-full bg-white/95 px-2.5 py-1 shadow-sm">
                     <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                    <span className="text-sm font-semibold text-foreground">{playground.rating}</span>
+                    <span className="text-sm font-semibold text-foreground">
+                      {playground.rating}
+                    </span>
                     <span className="text-xs text-muted-foreground">
                       ({playground.reviewCount} {t("playgroundsUi.reviews")})
                     </span>
                   </div>
                 </div>
+
                 <CardContent className="p-4">
-                  <h3 className="font-semibold text-foreground">{playground.name[language]}</h3>
+                  <h3 className="font-semibold text-foreground">
+                    {playground.name[language]}
+                  </h3>
+
                   <div className="mt-1 flex items-center gap-1 text-muted-foreground">
                     <MapPin className="h-4 w-4 shrink-0" />
                     <span className="text-sm">{playground.location[language]}</span>
                   </div>
+
                   <div className="mt-3 flex flex-wrap gap-1.5">
                     {playground.pitchSizes.map((size) => (
                       <Badge key={size} variant="secondary" className="text-xs">
@@ -303,13 +340,18 @@ function PlaygroundsPageContent() {
                       </Badge>
                     ))}
                   </div>
+
                   <div className="mt-4 flex items-center justify-between border-t pt-4">
                     <div>
                       <span className="text-lg font-bold text-primary">
                         {playground.price.min}-{playground.price.max}
                       </span>
-                      <span className="text-sm text-muted-foreground"> {t("playgrounds.priceUnit")}</span>
+                      <span className="text-sm text-muted-foreground">
+                        {" "}
+                        {t("playgrounds.priceUnit")}
+                      </span>
                     </div>
+
                     <Button size="sm" onClick={() => handleBookNow(playground.id)}>
                       {t("playgrounds.book")}
                     </Button>
@@ -325,15 +367,23 @@ function PlaygroundsPageContent() {
             <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
               <Search className="h-8 w-8 text-muted-foreground" />
             </div>
-            <h3 className="mt-4 text-lg font-semibold text-foreground">{t("playgrounds.noResultsTitle")}</h3>
-            <p className="mt-2 text-muted-foreground">{t("playgrounds.noResultsDescription")}</p>
+            <h3 className="mt-4 text-lg font-semibold text-foreground">
+              {t("playgrounds.noResultsTitle")}
+            </h3>
+            <p className="mt-2 text-muted-foreground">
+              {t("playgrounds.noResultsDescription")}
+            </p>
             <Button variant="outline" className="mt-4" onClick={clearFilters}>
               {t("playgrounds.clearAllFilters")}
             </Button>
           </div>
         )}
 
-        <AuthRequiredDialog open={showAuthDialog} onOpenChange={setShowAuthDialog} cancelHref="/" />
+        <AuthRequiredDialog
+          open={showAuthDialog}
+          onOpenChange={setShowAuthDialog}
+          cancelHref="/"
+        />
       </div>
     </AppShell>
   )

@@ -32,7 +32,6 @@ function mapAuthError(error: unknown, t: (key: string) => string): string {
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState("")
-  const [accountType, setAccountType] = useState<"player" | "owner">("player")
   const [isLoading, setIsLoading] = useState(false)
   const [errorMessage, setErrorMessage] = useState("")
   const [emailTouched, setEmailTouched] = useState(false)
@@ -59,11 +58,12 @@ export default function ForgotPasswordPage() {
         RESET_PENDING_KEY,
         JSON.stringify({
           email: email.trim().toLowerCase(),
-          accountType,
           purpose: "reset",
         }),
       )
-      router.push(`${AUTH_ROUTES.verifyOtp}?purpose=reset&type=${accountType}`)
+
+      router.push(`${AUTH_ROUTES.verifyOtp}?purpose=reset`)
+
     } catch (error) {
       setErrorMessage(mapAuthError(error, t))
     } finally {
@@ -93,29 +93,6 @@ export default function ForgotPasswordPage() {
             )}
 
             <form onSubmit={handleEmailSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label>{t("auth.accountTypeLabel")}</Label>
-                <div className="grid grid-cols-2 gap-2">
-                  <button
-                    type="button"
-                    className={`rounded-lg border p-3 text-sm font-medium transition-colors ${
-                      accountType === "player" ? "border-primary bg-accent" : "border-muted bg-card"
-                    }`}
-                    onClick={() => setAccountType("player")}
-                  >
-                    {t("auth.accountTypePlayer")}
-                  </button>
-                  <button
-                    type="button"
-                    className={`rounded-lg border p-3 text-sm font-medium transition-colors ${
-                      accountType === "owner" ? "border-primary bg-accent" : "border-muted bg-card"
-                    }`}
-                    onClick={() => setAccountType("owner")}
-                  >
-                    {t("auth.accountTypeOwner")}
-                  </button>
-                </div>
-              </div>
 
               <div className="space-y-2">
                 <Label htmlFor="email">{t("auth.email")}</Label>

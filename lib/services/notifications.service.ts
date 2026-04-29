@@ -1,47 +1,53 @@
-import { useNotificationsStore } from "@/lib/notifications-store"
+import { http } from "@/lib/API/http-client"
 import type { EntityId } from "@/lib/types/common"
-import type { NotificationInput, NotificationSettingKey, NotificationType } from "@/lib/types/notification"
+import type { AppNotification } from "@/lib/types/notification"
 
-function mapTypeToSetting(
-  type: NotificationType,
-): NotificationSettingKey {
-  const mapping: Record<NotificationType, NotificationSettingKey> = {
-    booking_created: "booking",
-    booking_cancelled: "booking",
-    payment_submitted: "booking",
-    tournament_joined: "tournament",
-    tournament_created: "tournament",
-    booking_approved: "owner",
-    booking_rejected: "owner",
-    owner_booking_request: "owner",
-    owner_booking_payment: "owner",
-    owner_tournament_registration: "owner",
-    system: "system",
-  }
-  return mapping[type]
+type ApiResponse<T> = {
+  isSuccess: boolean
+  data: T
+  message?: string | null
+  errors?: unknown
 }
 
-export function pushNotification(input: NotificationInput) {
-  const store = useNotificationsStore.getState()
-  const settingKey = mapTypeToSetting(input.type)
-
-  if (!store.settings[settingKey]) return null
-
-  return store.addNotification(input)
+function getToken() {
+  if (typeof window === "undefined") return null
+  return localStorage.getItem("token")
 }
 
-export function markNotificationRead(id: EntityId) {
-  useNotificationsStore.getState().markAsRead(id)
-}
+export const notificationsService = {
+  async getAll(): Promise<AppNotification[]> {
+    if (!getToken()) return []
 
-export function markAllNotificationsRead() {
-  useNotificationsStore.getState().markAllAsRead()
-}
+    try {
+      const res = await http<ApiResponse<AppNotification[]>>("/notifications")
+      return res.data ?? []
+    } catch (error) {
+      console.warn("Failed to load remote notifications", error)
+      return []
+    }
+  },
 
-export function removeNotification(id: EntityId) {
-  useNotificationsStore.getState().removeNotification(id)
-}
+  async markAsRead(id: EntityId): Promise<void> {
+    if (!getToken()) return
 
-export function clearAllNotifications() {
-  useNotificationsStore.getState().clearAllNotifications()
+    try {
+      await http(`/notifications/${id}/read`, {
+        method: "PATCH",
+      })
+    } catch (error) {
+      console.warn("Failed to mark notification as read remotely", error)
+    }
+  },
+
+  async markAllAsRead(): Promise<void> {
+    if (!getToken()) return
+
+    try {
+      await http("/notifications/read-all", {
+        method: "PATCH",
+      })
+    } catch (error) {
+      console.warn("Failed to mark all notifications as read remotely", error)
+    }
+  },
 }

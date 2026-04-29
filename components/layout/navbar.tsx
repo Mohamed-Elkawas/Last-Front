@@ -1,10 +1,20 @@
 "use client"
 
 import { usePathname, useRouter } from "next/navigation"
-import { Bell, User, Trophy, MapPin, Calendar, Home, Star, ClipboardList, Menu } from "lucide-react"
+import {
+  Bell,
+  User,
+  Trophy,
+  MapPin,
+  Calendar,
+  Home,
+  Star,
+  ClipboardList,
+  Menu,
+  Settings,
+} from "lucide-react"
 import Link from "next/link"
 import { useState } from "react"
-
 import { AppLogo } from "@/components/ui/app-logo"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Button } from "@/components/ui/button"
@@ -15,7 +25,6 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
-
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
 import { useTranslate } from "@/hooks/use-translate"
@@ -29,26 +38,41 @@ export function Navbar() {
   const router = useRouter()
   const [isSigningOut, setIsSigningOut] = useState(false)
 
-  const { user, hasHydrated: authHasHydrated, session, isAuthenticated, signOut, accountType } = useAuth()
-  const { unreadCount, hasHydrated: notificationsHydrated } = useNotifications()
+  const {
+    user,
+    hasHydrated: authHasHydrated,
+    session,
+    isAuthenticated,
+    signOut,
+    accountType,
+  } = useAuth()
+
+  const { unreadCount } = useNotifications()
   const { balance: pointsBalance, hasHydrated: pointsHydrated } = usePoints()
+  const { t, hasHydrated: languageHasHydrated } = useTranslate()
+
   const isOwner = session?.roles.includes("owner") ?? false
   const isOwnerSession = accountType === "owner"
 
-  const { t, hasHydrated: languageHasHydrated } = useTranslate()
-
-  const ready = authHasHydrated && languageHasHydrated && notificationsHydrated && pointsHydrated
-
+  const ready = authHasHydrated && languageHasHydrated && pointsHydrated
   if (!ready) return null
+
+  const myTournamentsLabel = t("common.myTournaments")   || "My Tournaments"
 
   const navLinks = isOwnerSession
     ? [
-        { href: AUTH_ROUTES.ownerHome, label: t("ownerBookings.navLink"), icon: ClipboardList },
+        {
+          href: AUTH_ROUTES.ownerHome,
+          label: t("ownerBookings.navLink"),
+          icon: ClipboardList,
+        },
       ]
     : [
         { href: "/", label: t("common.home"), icon: Home },
         { href: "/playgrounds", label: t("common.playgrounds"), icon: MapPin },
         { href: "/tournaments", label: t("common.tournaments"), icon: Trophy },
+        { href: "/my-tournaments", label: myTournamentsLabel, icon: Trophy },
+
         { href: "/bookings", label: t("common.myBookings"), icon: Calendar },
       ]
 
@@ -63,7 +87,9 @@ export function Navbar() {
           <nav className="hidden items-center gap-1 md:flex">
             {navLinks.map((link) => {
               const Icon = link.icon
-              const isActive = pathname === link.href
+              const isActive =
+                pathname === link.href ||
+                (link.href !== "/" && pathname.startsWith(`${link.href}/`))
 
               return (
                 <Link
@@ -73,7 +99,7 @@ export function Navbar() {
                     "flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors",
                     isActive
                       ? "bg-accent text-accent-foreground"
-                      : "text-muted-foreground hover:bg-muted hover:text-foreground"
+                      : "text-muted-foreground hover:bg-muted hover:text-foreground",
                   )}
                 >
                   <Icon className="h-4 w-4" />
@@ -95,7 +121,12 @@ export function Navbar() {
               </div>
 
               <Button variant="ghost" size="icon" className="relative" asChild>
-                <Link href="/notifications" aria-label={t("navbar.unreadNotifications", { count: unreadCount })}>
+                <Link
+                  href="/notifications"
+                  aria-label={t("navbar.unreadNotifications", {
+                    count: unreadCount,
+                  })}
+                >
                   <Bell className="h-5 w-5" />
                   {unreadCount > 0 ? (
                     <span className="absolute end-0.5 top-0.5 flex h-4 min-w-4 items-center justify-center rounded-full bg-destructive px-0.5 text-[10px] font-medium text-destructive-foreground">
@@ -138,10 +169,24 @@ export function Navbar() {
 
                   <LanguageSwitcher />
 
+                  <DropdownMenuItem asChild>
+                    <Link href="/notifications/settings" className="flex items-center gap-2">
+                      <Settings className="h-4 w-4" />
+                      {t("notifications.settingsTitle")}
+                    </Link>
+                  </DropdownMenuItem>
+
                   <DropdownMenuSeparator />
 
                   {!isOwnerSession ? (
                     <>
+                      <DropdownMenuItem asChild>
+                        <Link href="/my-tournaments" className="flex items-center gap-2">
+                          <Trophy className="h-4 w-4" />
+                          {myTournamentsLabel}
+                        </Link>
+                      </DropdownMenuItem>
+
                       <DropdownMenuItem asChild>
                         <Link href="/bookings" className="flex items-center gap-2">
                           <Calendar className="h-4 w-4" />

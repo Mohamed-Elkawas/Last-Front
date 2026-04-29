@@ -11,6 +11,11 @@ type User = {
   position: string
   points: number
   avatar?: string
+
+  age?: number
+  gender?: string
+  address?: string
+  joinedAt?: string
 }
 
 type UserStore = {
@@ -23,13 +28,18 @@ type UserStore = {
 }
 
 const defaultUser: User = {
-  fullName: "medo",
-  username: "medo_m",
-  email: "medo@example.com",
-  phoneNumber: "01008601287",
-  position: "LW",
-  points: 1250,
+  fullName: "",
+  username: "",
+  email: "",
+  phoneNumber: "",
+  position: "",
+  points: 0,
   avatar: "",
+
+  age: undefined,
+  gender: "",
+  address: "",
+  joinedAt: "",
 }
 
 export const useUserStore = create<UserStore>()(
@@ -73,8 +83,6 @@ export const useUserStore = create<UserStore>()(
             user: {
               ...defaultUser,
               ...oldUser,
-              username: oldUser.username || "medo_m",
-              email: oldUser.email || "medo@example.com",
             },
             hasHydrated: true,
           }

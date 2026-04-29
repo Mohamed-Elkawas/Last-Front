@@ -13,10 +13,8 @@ export type BookingLifecycleStatus =
   | "expired"
   | "rejected"
 
-/** Alias aligned with typical API naming. */
 export type BookingStatus = BookingLifecycleStatus
 
-/** Owner/admin decision on a booking awaiting approval (maps to future PATCH /bookings/:id). */
 export type OwnerBookingDecision = "approve" | "reject"
 
 export type OwnerBookingAction = {
@@ -24,7 +22,6 @@ export type OwnerBookingAction = {
   decision: OwnerBookingDecision
 }
 
-/** Payment sub-state for API mapping (orthogonal to booking lifecycle in real backends). */
 export type PaymentStatus =
   | "none"
   | "awaiting_proof"
@@ -36,22 +33,33 @@ export type PaymentStatus =
 
 export type PaymentMethod = "vodafone" | "instapay"
 
+export type BookingSlot = {
+  startTime: string
+  endTime: string
+  slotKey: string
+}
+
+export type CreateBookingSlotInput = {
+  startTime: string
+  endTime: string
+}
+
 export type CreatePlaygroundBookingPayload = {
   playgroundId: string
+  ownerId?: string
   playgroundName: LocalizedString
   playgroundLocation: LocalizedString
   date: string
   dateLabel: string
-  slots: string
+  slots: BookingSlot[]
   hours: number
   subtotal: number
   pointsDiscount: number
   total: number
   paymentMethod: PaymentMethod
-  /** Player display name for owner dashboards (maps to future `bookedBy` on API). */
-  playerDisplayName?: string
-  /** Contact phone shown on owner operations screens (frontend-only MVP). */
-  playerPhone?: string
+  playerDisplayName: string
+  playerPhone: string
+  playerEmail?: string
 }
 
 export type CreateTournamentBookingPayload = {
@@ -72,11 +80,13 @@ export type PaymentProof = {
 
 export type PlaygroundBookingSnapshot = {
   id: string
+  ownerId?: string
   name: LocalizedString
   location: LocalizedString
   date: string
   dateLabel: string
-  slots: string
+  slots: BookingSlot[]
+  slotKeys: string[]
   hours: number
   subtotal: number
   pointsDiscount: number
@@ -98,10 +108,9 @@ export type Booking = {
   paymentStatus: PaymentStatus
   createdAt: number
   expiresAt: number
-  /** Player / booker name for owner views when distinct from payment payer. */
   playerDisplayName?: string
   playerPhone?: string
-  /** Owner marks the reserved match as completed (playground bookings). */
+  playerEmail?: string
   playedAt?: number
   rated?: boolean
   paymentSubmittedAt?: number
@@ -114,5 +123,4 @@ export type Booking = {
   tournament?: TournamentBookingSnapshot
 }
 
-/** Persisted client-side until bookings API exists (`paymentStatus` is derived). */
 export type PersistedBooking = Omit<Booking, "paymentStatus">

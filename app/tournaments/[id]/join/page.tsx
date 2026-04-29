@@ -1,17 +1,26 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { useRouter, useParams } from "next/navigation"
-import { ArrowLeft, User, Phone, Mail, Users, Plus, X, Check, CreditCard, Wallet } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
-import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+import { useParams, useRouter } from "next/navigation"
+import {
+  ArrowLeft,
+  Check,
+  CreditCard,
+  Mail,
+  Phone,
+  Plus,
+  User,
+  Users,
+  Wallet,
+  X,
+} from "lucide-react"
+
 import { AppShell } from "@/components/layout/app-shell"
 import { AuthRequiredDialog } from "@/components/auth/auth-required-dialog"
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import {
   Command,
   CommandEmpty,
@@ -20,17 +29,21 @@ import {
   CommandItem,
   CommandList,
 } from "@/components/ui/command"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
-import { useTranslate } from "@/hooks/use-translate"
+import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
+
 import { useAuth } from "@/hooks/use-auth"
+import { useTranslate } from "@/hooks/use-translate"
 import { useTournamentDetail } from "@/hooks/use-tournaments"
 import { useTournamentInvitableUsers } from "@/hooks/use-tournament-invitable-users"
 import { useRequireAuth } from "@/lib/auth/require-auth"
-import { createTournamentBooking } from "@/lib/services/bookings.service"
-import type { PaymentMethod } from "@/lib/types/booking"
+import { createTournamentRegistration } from "@/lib/services/tournaments.service"
+import type { TournamentPaymentMethod } from "@/lib/types/tournament"
 import type { InvitableUser } from "@/lib/types/tournament-invite"
 
-interface TeamMember {
+type TeamMember = {
   username: string
   name: string
   avatar: string | null
@@ -40,28 +53,57 @@ type TournamentJoinDraft = {
   step: number
   teamName: string
   teamMembers: TeamMember[]
-  paymentMethod: PaymentMethod
+  paymentMethod: TournamentPaymentMethod
 }
 
-const DEFAULT_TOURNAMENT_PAYMENT_METHOD: PaymentMethod = "vodafone"
+const DEFAULT_PAYMENT_METHOD: TournamentPaymentMethod = "vodafone_cash"
 
-function isPaymentMethod(value: string): value is PaymentMethod {
-  return value === "vodafone" || value === "instapay"
+function isTournamentPaymentMethod(value: string): value is TournamentPaymentMethod {
+  return value === "vodafone_cash" || value === "instapay"
+}
+
+function getLocalizedValue(
+  value: { ar?: string; en?: string } | undefined,
+  language: "ar" | "en",
+) {
+  if (!value) return ""
+  return value[language] || value.en || value.ar || ""
 }
 
 export default function JoinTournamentPage() {
   const router = useRouter()
   const params = useParams()
-  const id = typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : undefined
-  const { tournament, loading: tournamentLoading } = useTournamentDetail(id)
+  const id =
+    typeof params.id === "string"
+      ? params.id
+      : Array.isArray(params.id)
+        ? params.id[0]
+        : undefined
+
   const { t, language } = useTranslate()
   const { user, hasHydrated } = useAuth()
-  const { users: invitableUsers, loading: invitableLoading } = useTournamentInvitableUsers()
   const { isAuthenticated, canProceed } = useRequireAuth()
-  const draftStorageKey = id ? `tournament-join-draft:${id}` : null
-  const [showAuthDialog, setShowAuthDialog] = useState(() => !isAuthenticated)
 
-  // Guard: If guest visits this page, show auth dialog
+  const { tournament, loading: tournamentLoading, error: tournamentError } =
+    useTournamentDetail(id)
+
+  const { users: invitableUsers, loading: invitableLoading } =
+    useTournamentInvitableUsers()
+
+  const draftStorageKey = id ? `tournament-join-draft:${id}` : null
+
+  const [showAuthDialog, setShowAuthDialog] = useState(false)
+  const [submitting, setSubmitting] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
+
+  const [step, setStep] = useState(1)
+  const [teamName, setTeamName] = useState("")
+  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
+  const [searchOpen, setSearchOpen] = useState(false)
+  const [searchQuery, setSearchQuery] = useState("")
+  const [paymentMethod, setPaymentMethod] =
+    useState<TournamentPaymentMethod>(DEFAULT_PAYMENT_METHOD)
+
   useEffect(() => {
     if (!isAuthenticated) {
       if (id) {
@@ -71,40 +113,6 @@ export default function JoinTournamentPage() {
     }
   }, [canProceed, id, isAuthenticated])
 
-  const [step, setStep] = useState(1)
-  const [teamName, setTeamName] = useState("")
-  const [teamMembers, setTeamMembers] = useState<TeamMember[]>([])
-  const [searchOpen, setSearchOpen] = useState(false)
-  const [searchQuery, setSearchQuery] = useState("")
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(DEFAULT_TOURNAMENT_PAYMENT_METHOD)
-
-  const currentUser = {
-    name: user.fullName,
-    phone: user.phoneNumber,
-    email: user.email,
-    username: user.username,
-    avatar: user.avatar || null,
-  }
-
-  const filteredUsers = invitableUsers.filter(
-    (registeredUser) =>
-      !teamMembers.find((m) => m.username === registeredUser.username) &&
-      (registeredUser.username.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        registeredUser.name.toLowerCase().includes(searchQuery.toLowerCase())),
-  )
-
-  const addMember = (registeredUser: InvitableUser) => {
-    if (teamMembers.length < 10) {
-      setTeamMembers([...teamMembers, registeredUser])
-      setSearchOpen(false)
-      setSearchQuery("")
-    }
-  }
-
-  const removeMember = (username: string) => {
-    setTeamMembers(teamMembers.filter((m) => m.username !== username))
-  }
-
   useEffect(() => {
     if (!draftStorageKey || typeof window === "undefined") return
 
@@ -113,6 +121,7 @@ export default function JoinTournamentPage() {
 
     try {
       const draft = JSON.parse(rawDraft) as Partial<TournamentJoinDraft>
+
       const restoredMembers = Array.isArray(draft.teamMembers)
         ? draft.teamMembers.filter(
             (member): member is TeamMember =>
@@ -121,16 +130,20 @@ export default function JoinTournamentPage() {
               (typeof member?.avatar === "string" || member?.avatar === null),
           )
         : []
-      const paymentMethodFromDraft = draft.paymentMethod
-      const restoredPaymentMethod: PaymentMethod =
-        typeof paymentMethodFromDraft === "string" && isPaymentMethod(paymentMethodFromDraft)
-          ? paymentMethodFromDraft
-          : DEFAULT_TOURNAMENT_PAYMENT_METHOD
 
-      setStep(typeof draft.step === "number" && draft.step >= 1 && draft.step <= 3 ? draft.step : 1)
+      setStep(
+        typeof draft.step === "number" && draft.step >= 1 && draft.step <= 3
+          ? draft.step
+          : 1,
+      )
       setTeamName(typeof draft.teamName === "string" ? draft.teamName : "")
       setTeamMembers(restoredMembers)
-      setPaymentMethod(restoredPaymentMethod)
+      setPaymentMethod(
+        typeof draft.paymentMethod === "string" &&
+          isTournamentPaymentMethod(draft.paymentMethod)
+          ? draft.paymentMethod
+          : DEFAULT_PAYMENT_METHOD,
+      )
     } catch {
       window.localStorage.removeItem(draftStorageKey)
     }
@@ -149,15 +162,65 @@ export default function JoinTournamentPage() {
     window.localStorage.setItem(draftStorageKey, JSON.stringify(draft))
   }, [draftStorageKey, paymentMethod, step, teamMembers, teamName])
 
-  const handleContinueToPaymentPage = () => {
+  const currentUser = {
+    id: user.username || user.email || "current-player",
+    name: user.fullName || user.username || user.email || "",
+    phone: user.phoneNumber || "",
+    email: user.email || "",
+    username: user.username || "",
+    avatar: user.avatar || null,
+  }
+
+  const tournamentName = getLocalizedValue(tournament?.name, language)
+
+  const filteredUsers = useMemo(() => {
+    const normalizedSearch = searchQuery.trim().toLowerCase()
+
+    return invitableUsers.filter((registeredUser) => {
+      const alreadyAdded = teamMembers.some(
+        (member) => member.username === registeredUser.username,
+      )
+
+      if (alreadyAdded) return false
+      if (!normalizedSearch) return true
+
+      return (
+        registeredUser.username.toLowerCase().includes(normalizedSearch) ||
+        registeredUser.name.toLowerCase().includes(normalizedSearch)
+      )
+    })
+  }, [invitableUsers, searchQuery, teamMembers])
+
+  const addMember = (registeredUser: InvitableUser) => {
+    if (teamMembers.length >= 9) return
+
+    setTeamMembers((current) => [
+      ...current,
+      {
+        username: registeredUser.username,
+        name: registeredUser.name,
+        avatar: registeredUser.avatar ?? null,
+      },
+    ])
+
+    setSearchOpen(false)
+    setSearchQuery("")
+  }
+
+  const removeMember = (username: string) => {
+    setTeamMembers((current) =>
+      current.filter((member) => member.username !== username),
+    )
+  }
+
+  const canProceedToStep2 = teamName.trim().length > 0 && teamMembers.length >= 4
+
+  const handleCreateRegistration = async () => {
     const trimmedTeamName = teamName.trim()
     const playersCount = teamMembers.length + 1
-    const total = tournament?.entryFeePerTeam ?? 0
 
-    if (!tournament || !id || !trimmedTeamName || playersCount < 5 || total <= 0 || !isPaymentMethod(paymentMethod)) {
-      if (!trimmedTeamName || playersCount < 5) {
-        setStep(2)
-      }
+    if (!tournament || !id || !trimmedTeamName || playersCount < 5) {
+      setStep(2)
       return
     }
 
@@ -166,39 +229,86 @@ export default function JoinTournamentPage() {
       return
     }
 
-    const bookingId = createTournamentBooking({
-      tournamentId: id,
-      tournamentName: tournament.name,
-      teamName: trimmedTeamName,
-      players: playersCount,
-      total,
-      paymentMethod,
-    })
+    try {
+      setSubmitting(true)
+      setSubmitError(null)
 
-    if (draftStorageKey && typeof window !== "undefined") {
-      window.localStorage.removeItem(draftStorageKey)
+      const result = await createTournamentRegistration({
+        tournamentId: id,
+        teamName: trimmedTeamName,
+        players: [
+          {
+            id: currentUser.id,
+            fullName: currentUser.name,
+            username: currentUser.username,
+            avatar: currentUser.avatar,
+            isCaptain: true,
+          },
+          ...teamMembers.map((member) => ({
+            id: member.username,
+            fullName: member.name,
+            username: member.username,
+            avatar: member.avatar,
+            isCaptain: false,
+          })),
+        ],
+      })
+
+      if (draftStorageKey && typeof window !== "undefined") {
+        window.localStorage.removeItem(draftStorageKey)
+      }
+
+      router.push(
+        `/tournaments/${id}/join/payment?registrationId=${result.registration.id}&method=${paymentMethod}`,
+      )
+    } catch (error) {
+      if (error instanceof Error && error.message === "TEAM_NAME_ALREADY_EXISTS") {
+        setStep(2)
+        setSubmitError("اسم الفريق موجود بالفعل")
+        return
+      }
+
+      setSubmitError("حدث خطأ أثناء الانضمام للبطولة")
+    } finally {
+      setSubmitting(false)
     }
-
-    router.push(`/tournaments/${id}/join/payment?bookingId=${bookingId}`)
   }
 
-  const canProceedToStep2 = teamName.trim().length > 0 && teamMembers.length >= 4
-
-  if (!hasHydrated || invitableLoading) {
+  if (!hasHydrated || tournamentLoading || invitableLoading) {
     return (
       <AppShell>
         <div className="mx-auto max-w-3xl px-6 py-8">
-          <p className="text-sm text-muted-foreground">{t("tournamentJoin.loading")}</p>
+          <p className="text-sm text-muted-foreground">
+            {t("tournamentJoin.loading")}
+          </p>
         </div>
       </AppShell>
     )
   }
 
-  if (tournamentLoading || !tournament) {
+  if (tournamentError) {
     return (
       <AppShell>
-        <div className="mx-auto max-w-3xl px-6 py-8">
-          <p className="text-sm text-muted-foreground">{t("tournamentJoin.loading")}</p>
+        <div className="mx-auto max-w-3xl px-6 py-16 text-center">
+          <p className="text-sm text-destructive">{tournamentError.message}</p>
+          <Button className="mt-4" asChild>
+            <Link href="/tournaments">{t("tournamentJoin.back")}</Link>
+          </Button>
+        </div>
+      </AppShell>
+    )
+  }
+
+  if (!tournament) {
+    return (
+      <AppShell>
+        <div className="mx-auto max-w-3xl px-6 py-16 text-center">
+          <p className="text-sm text-muted-foreground">
+            {t("tournamentDetail.notFound") || "Tournament not found"}
+          </p>
+          <Button className="mt-4" asChild>
+            <Link href="/tournaments">{t("tournamentJoin.back")}</Link>
+          </Button>
         </div>
       </AppShell>
     )
@@ -208,33 +318,51 @@ export default function JoinTournamentPage() {
     <AppShell>
       <div className="mx-auto max-w-3xl px-6 py-8">
         <Button variant="ghost" className="mb-6 gap-2" asChild>
-          <Link href={`/tournaments/${params.id}`}>
+          <Link href={`/tournaments/${id}`}>
             <ArrowLeft className="h-4 w-4 icon-arrow-back" />
             {t("tournamentJoin.back")}
           </Link>
         </Button>
 
         <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">{t("tournamentJoin.title")}</h1>
-          <p className="mt-2 text-muted-foreground">{tournament.name[language]}</p>
+          <h1 className="text-3xl font-bold text-foreground">
+            {t("tournamentJoin.title")}
+          </h1>
+          <p className="mt-2 text-muted-foreground">{tournamentName}</p>
         </div>
 
         <div className="mb-8 flex items-center gap-4">
-          {[1, 2, 3].map((s) => (
-            <div key={s} className="flex items-center gap-2">
+          {[1, 2, 3].map((currentStep) => (
+            <div key={currentStep} className="flex items-center gap-2">
               <div
                 className={`flex h-8 w-8 items-center justify-center rounded-full text-sm font-medium ${
-                  step >= s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                  step >= currentStep
+                    ? "bg-primary text-primary-foreground"
+                    : "bg-muted text-muted-foreground"
                 }`}
               >
-                {step > s ? <Check className="h-4 w-4" /> : s}
+                {step > currentStep ? <Check className="h-4 w-4" /> : currentStep}
               </div>
-              <span className={`hidden text-sm sm:inline ${step >= s ? "text-foreground" : "text-muted-foreground"}`}>
-                {s === 1 && t("tournamentJoin.stepProfile")}
-                {s === 2 && t("tournamentJoin.stepTeam")}
-                {s === 3 && t("tournamentJoin.stepPayment")}
+
+              <span
+                className={`hidden text-sm sm:inline ${
+                  step >= currentStep
+                    ? "text-foreground"
+                    : "text-muted-foreground"
+                }`}
+              >
+                {currentStep === 1 && t("tournamentJoin.stepProfile")}
+                {currentStep === 2 && t("tournamentJoin.stepTeam")}
+                {currentStep === 3 && t("tournamentJoin.stepPayment")}
               </span>
-              {s < 3 && <div className={`h-0.5 w-8 ${step > s ? "bg-primary" : "bg-muted"}`} />}
+
+              {currentStep < 3 && (
+                <div
+                  className={`h-0.5 w-8 ${
+                    step > currentStep ? "bg-primary" : "bg-muted"
+                  }`}
+                />
+              )}
             </div>
           ))}
         </div>
@@ -247,8 +375,11 @@ export default function JoinTournamentPage() {
                 {t("tournamentJoin.profileTitle")}
               </CardTitle>
             </CardHeader>
+
             <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">{t("tournamentJoin.profileHint")}</p>
+              <p className="text-sm text-muted-foreground">
+                {t("tournamentJoin.profileHint")}
+              </p>
 
               <div className="space-y-2">
                 <Label>{t("profile.fullName")}</Label>
@@ -289,6 +420,7 @@ export default function JoinTournamentPage() {
                 {t("tournamentJoin.teamTitle")}
               </CardTitle>
             </CardHeader>
+
             <CardContent className="space-y-6">
               <div className="space-y-2">
                 <Label htmlFor="team-name">{t("tournamentJoin.teamName")}</Label>
@@ -296,43 +428,75 @@ export default function JoinTournamentPage() {
                   id="team-name"
                   placeholder={t("tournamentJoin.teamNamePh")}
                   value={teamName}
-                  onChange={(e) => setTeamName(e.target.value)}
+                  onChange={(event) => {
+                    setTeamName(event.target.value)
+                    setSubmitError(null)
+                  }}
                 />
+
+                {submitError && (
+                  <p className="mt-2 text-sm text-destructive">
+                    {submitError}
+                  </p>
+                )}
               </div>
 
               <div className="space-y-3">
                 <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-                  <Label>{t("tournamentJoin.membersLabel", { count: teamMembers.length })}</Label>
-                  <span className="text-sm text-muted-foreground">{t("tournamentJoin.minSquad")}</span>
+                  <Label>
+                    {t("tournamentJoin.membersLabel", {
+                      count: teamMembers.length,
+                    })}
+                  </Label>
+                  <span className="text-sm text-muted-foreground">
+                    {t("tournamentJoin.minSquad")}
+                  </span>
                 </div>
 
                 <div className="flex items-center gap-3 rounded-lg border border-primary/30 bg-accent/50 p-3">
                   <Avatar className="h-10 w-10">
                     <AvatarImage src={currentUser.avatar || undefined} />
                     <AvatarFallback className="bg-primary text-primary-foreground">
-                      {currentUser.name.charAt(0).toUpperCase()}
+                      {currentUser.name.charAt(0).toUpperCase() || "P"}
                     </AvatarFallback>
                   </Avatar>
+
                   <div className="min-w-0 flex-1">
                     <p className="font-medium">{currentUser.name}</p>
-                    <p className="text-sm text-muted-foreground">@{currentUser.username}</p>
+                    <p className="text-sm text-muted-foreground">
+                      @{currentUser.username}
+                    </p>
                   </div>
+
                   <span className="shrink-0 rounded-full bg-primary px-2 py-1 text-xs text-primary-foreground">
                     {t("tournamentJoin.captain")}
                   </span>
                 </div>
 
                 {teamMembers.map((member) => (
-                  <div key={member.username} className="flex items-center gap-3 rounded-lg border p-3">
+                  <div
+                    key={member.username}
+                    className="flex items-center gap-3 rounded-lg border p-3"
+                  >
                     <Avatar className="h-10 w-10">
                       <AvatarImage src={member.avatar || undefined} />
-                      <AvatarFallback className="bg-muted">{member.name.charAt(0).toUpperCase()}</AvatarFallback>
+                      <AvatarFallback className="bg-muted">
+                        {member.name.charAt(0).toUpperCase()}
+                      </AvatarFallback>
                     </Avatar>
+
                     <div className="min-w-0 flex-1">
                       <p className="font-medium">{member.name}</p>
-                      <p className="text-sm text-muted-foreground">@{member.username}</p>
+                      <p className="text-sm text-muted-foreground">
+                        @{member.username}
+                      </p>
                     </div>
-                    <Button variant="ghost" size="icon" onClick={() => removeMember(member.username)}>
+
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      onClick={() => removeMember(member.username)}
+                    >
                       <X className="h-4 w-4" />
                     </Button>
                   </div>
@@ -346,6 +510,7 @@ export default function JoinTournamentPage() {
                         {t("tournamentJoin.addMember")}
                       </Button>
                     </PopoverTrigger>
+
                     <PopoverContent className="w-full p-0" align="start">
                       <Command>
                         <CommandInput
@@ -354,7 +519,10 @@ export default function JoinTournamentPage() {
                           onValueChange={setSearchQuery}
                         />
                         <CommandList>
-                          <CommandEmpty>{t("tournamentJoin.emptySearch")}</CommandEmpty>
+                          <CommandEmpty>
+                            {t("tournamentJoin.emptySearch")}
+                          </CommandEmpty>
+
                           <CommandGroup>
                             {filteredUsers.map((registeredUser) => (
                               <CommandItem
@@ -365,12 +533,19 @@ export default function JoinTournamentPage() {
                                 <div className="flex items-center gap-3">
                                   <Avatar className="h-8 w-8">
                                     <AvatarFallback className="bg-muted text-xs">
-                                      {registeredUser.name.charAt(0).toUpperCase()}
+                                      {registeredUser.name
+                                        .charAt(0)
+                                        .toUpperCase()}
                                     </AvatarFallback>
                                   </Avatar>
+
                                   <div>
-                                    <p className="font-medium">{registeredUser.name}</p>
-                                    <p className="text-sm text-muted-foreground">@{registeredUser.username}</p>
+                                    <p className="font-medium">
+                                      {registeredUser.name}
+                                    </p>
+                                    <p className="text-sm text-muted-foreground">
+                                      @{registeredUser.username}
+                                    </p>
                                   </div>
                                 </div>
                               </CommandItem>
@@ -384,7 +559,9 @@ export default function JoinTournamentPage() {
 
                 {teamMembers.length < 4 && (
                   <p className="text-sm text-destructive">
-                    {t("tournamentJoin.needMore", { count: 4 - teamMembers.length })}
+                    {t("tournamentJoin.needMore", {
+                      count: 4 - teamMembers.length,
+                    })}
                   </p>
                 )}
               </div>
@@ -393,7 +570,12 @@ export default function JoinTournamentPage() {
                 <Button variant="outline" onClick={() => setStep(1)}>
                   {t("common.back")}
                 </Button>
-                <Button className="flex-1" disabled={!canProceedToStep2} onClick={() => setStep(3)}>
+
+                <Button
+                  className="flex-1"
+                  disabled={!canProceedToStep2}
+                  onClick={() => setStep(3)}
+                >
                   {t("tournamentJoin.joinContinuePayment")}
                 </Button>
               </div>
@@ -409,26 +591,44 @@ export default function JoinTournamentPage() {
                 {t("tournamentJoin.paymentTitle")}
               </CardTitle>
             </CardHeader>
+
             <CardContent className="space-y-6">
               <div className="rounded-lg bg-muted p-4">
-                <h4 className="font-medium">{t("tournamentJoin.orderSummary")}</h4>
+                <h4 className="font-medium">
+                  {t("tournamentJoin.orderSummary")}
+                </h4>
+
                 <div className="mt-3 space-y-2">
                   <div className="flex justify-between gap-4 text-sm">
-                    <span className="text-muted-foreground">{t("tournamentJoin.tournamentRow")}</span>
-                    <span className="text-end font-medium">{tournament.name[language]}</span>
+                    <span className="text-muted-foreground">
+                      {t("tournamentJoin.tournamentRow")}
+                    </span>
+                    <span className="text-end font-medium">{tournamentName}</span>
                   </div>
+
                   <div className="flex justify-between gap-4 text-sm">
-                    <span className="text-muted-foreground">{t("tournamentJoin.teamRow")}</span>
+                    <span className="text-muted-foreground">
+                      {t("tournamentJoin.teamRow")}
+                    </span>
                     <span className="text-end font-medium">{teamName}</span>
                   </div>
+
                   <div className="flex justify-between gap-4 text-sm">
-                    <span className="text-muted-foreground">{t("tournamentJoin.playersRow")}</span>
-                    <span className="text-end font-medium">{teamMembers.length + 1}</span>
+                    <span className="text-muted-foreground">
+                      {t("tournamentJoin.playersRow")}
+                    </span>
+                    <span className="text-end font-medium">
+                      {teamMembers.length + 1}
+                    </span>
                   </div>
+
                   <div className="flex justify-between border-t pt-2">
-                    <span className="font-medium">{t("tournamentJoin.total")}</span>
+                    <span className="font-medium">
+                      {t("tournamentJoin.total")}
+                    </span>
                     <span className="text-lg font-bold text-primary">
-                      {tournament.entryFeePerTeam} {t("common.egp")}
+                      {tournament.entryFeePerTeam.toLocaleString()}{" "}
+                      {t("common.egp")}
                     </span>
                   </div>
                 </div>
@@ -437,30 +637,42 @@ export default function JoinTournamentPage() {
               <RadioGroup
                 value={paymentMethod}
                 onValueChange={(value) => {
-                  if (isPaymentMethod(value)) {
+                  if (isTournamentPaymentMethod(value)) {
                     setPaymentMethod(value)
                   }
                 }}
                 className="space-y-3"
               >
                 <div>
-                  <RadioGroupItem value="vodafone" id="vodafone" className="peer sr-only" />
+                  <RadioGroupItem
+                    value="vodafone_cash"
+                    id="vodafone_cash"
+                    className="peer sr-only"
+                  />
                   <Label
-                    htmlFor="vodafone"
+                    htmlFor="vodafone_cash"
                     className="flex cursor-pointer items-center gap-4 rounded-lg border-2 p-4 transition-colors peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-accent"
                   >
                     <div className="flex h-12 w-12 items-center justify-center rounded-lg bg-red-500">
                       <Wallet className="h-6 w-6 text-white" />
                     </div>
                     <div>
-                      <p className="font-medium">{t("tournamentJoin.vodafoneTitle")}</p>
-                      <p className="text-sm text-muted-foreground">{t("tournamentJoin.vodafoneDesc")}</p>
+                      <p className="font-medium">
+                        {t("tournamentJoin.vodafoneTitle")}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {t("tournamentJoin.vodafoneDesc")}
+                      </p>
                     </div>
                   </Label>
                 </div>
 
                 <div>
-                  <RadioGroupItem value="instapay" id="instapay" className="peer sr-only" />
+                  <RadioGroupItem
+                    value="instapay"
+                    id="instapay"
+                    className="peer sr-only"
+                  />
                   <Label
                     htmlFor="instapay"
                     className="flex cursor-pointer items-center gap-4 rounded-lg border-2 p-4 transition-colors peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-accent"
@@ -469,23 +681,45 @@ export default function JoinTournamentPage() {
                       <CreditCard className="h-6 w-6 text-white" />
                     </div>
                     <div>
-                      <p className="font-medium">{t("tournamentJoin.instapayTitle")}</p>
-                      <p className="text-sm text-muted-foreground">{t("tournamentJoin.instapayDesc")}</p>
+                      <p className="font-medium">
+                        {t("tournamentJoin.instapayTitle")}
+                      </p>
+                      <p className="text-sm text-muted-foreground">
+                        {t("tournamentJoin.instapayDesc")}
+                      </p>
                     </div>
                   </Label>
                 </div>
               </RadioGroup>
 
+              {submitError && (
+                <p className="rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+                  {submitError}
+                </p>
+              )}
+
               <div className="flex gap-4">
-                <Button variant="outline" onClick={() => setStep(2)}>
+                <Button
+                  variant="outline"
+                  disabled={submitting}
+                  onClick={() => setStep(2)}
+                >
                   {t("common.back")}
                 </Button>
+
                 <Button
                   className="flex-1"
-                  disabled={!canProceedToStep2 || !isPaymentMethod(paymentMethod) || tournament.entryFeePerTeam <= 0}
-                  onClick={handleContinueToPaymentPage}
+                  disabled={
+                    submitting ||
+                    !canProceedToStep2 ||
+                    !isTournamentPaymentMethod(paymentMethod) ||
+                    tournament.entryFeePerTeam <= 0
+                  }
+                  onClick={handleCreateRegistration}
                 >
-                  {t("tournamentJoin.continuePaymentDetails")}
+                  {submitting
+                    ? t("common.loading")
+                    : t("tournamentJoin.continuePaymentDetails")}
                 </Button>
               </div>
             </CardContent>

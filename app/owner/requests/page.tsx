@@ -155,8 +155,11 @@ export default function OwnerRequestsPage() {
                           <div className="sm:col-span-2">
                             <p className="text-xs text-slate-500">{t("ownerBookings.columnsWhen")}</p>
                             <p className="font-medium text-slate-100">{pg.dateLabel}</p>
-                            <p className="text-slate-400">{pg.slots}</p>
-                          </div>
+                            <p className="text-slate-400">
+                              {pg.slots
+                                ?.map((slot) => `${slot.startTime} - ${slot.endTime}`)
+                                .join(", ") || "-"}
+                            </p>                          </div>
                         </div>
 
                         <div className="flex flex-wrap gap-2">
@@ -231,8 +234,11 @@ export default function OwnerRequestsPage() {
                 <div>
                   <p className="text-slate-500">{t("ownerBookings.columnsWhen")}</p>
                   <p>{detail.playground.dateLabel}</p>
-                  <p className="text-slate-400">{detail.playground.slots}</p>
-                </div>
+                  <p className="text-slate-400">
+                    {detail.playground.slots
+                      ?.map((slot) => `${slot.startTime} - ${slot.endTime}`)
+                      .join(", ") || "-"}
+                  </p>                </div>
                 <div>
                   <p className="text-slate-500">{t("ownerBookings.columnsPrice")}</p>
                   <p className="text-lg font-bold text-cyan-300">

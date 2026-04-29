@@ -44,9 +44,7 @@ function buildSession(accountType: "player" | "owner", userId?: string): AuthSes
 }
 
 function extractToken(response: unknown): string | undefined {
-  if (!response || typeof response !== "object") {
-    return undefined
-  }
+  if (!response || typeof response !== "object") return undefined
 
   const payload = response as Record<string, unknown>
   return (
@@ -58,17 +56,13 @@ function extractToken(response: unknown): string | undefined {
 }
 
 function extractUserData(response: unknown): Record<string, unknown> | null {
-  if (!response || typeof response !== "object") {
-    return null
-  }
+  if (!response || typeof response !== "object") return null
 
   const payload = response as Record<string, unknown>
   const outerData = payload.data as Record<string, unknown> | undefined
   const candidate = outerData ?? payload
 
-  if (typeof candidate !== "object" || candidate === null) {
-    return null
-  }
+  if (typeof candidate !== "object" || candidate === null) return null
 
   return (
     (candidate.user as Record<string, unknown>) ||
@@ -131,7 +125,9 @@ export async function verifyPasswordResetOtp(payload: VerifyOtpApiRequest): Prom
   await postToApi<VerifyOtpApiRequest, AuthApiResponse>("/api/auth/verify-otp", payload)
 }
 
-export async function verifyRegisterOtp(payload: VerifyOtpApiRequest & { accountType: "player" | "owner" }): Promise<void> {
+export async function verifyRegisterOtp(
+  payload: VerifyOtpApiRequest & { accountType: "player" | "owner" },
+): Promise<void> {
   await postToApi<VerifyOtpApiRequest & { accountType: "player" | "owner" }, AuthApiResponse>(
     "/api/auth/verify-otp",
     payload,
@@ -146,12 +142,11 @@ export async function resetPassword(payload: ResetPasswordApiRequest): Promise<v
 }
 
 export async function signIn(payload: SignInRequestPayload): Promise<AuthSession> {
-  const request: LoginApiRequest = {
-    password: payload.password,
-    email: payload.email ? normalizeEmail(payload.email) : null,
-    phone: payload.phone ? payload.phone.trim() : null,
-    accountType: payload.accountType,
-  }
+const request = {
+  password: payload.password,
+  email: normalizeEmail(payload.email ?? ""),
+  accountType: payload.accountType === "owner" ? "Owner" : "Player",
+} as unknown as LoginApiRequest
 
   const res = await postToApi<LoginApiRequest, AuthApiResponse>("/api/auth/login", request)
 
@@ -174,7 +169,7 @@ export async function signIn(payload: SignInRequestPayload): Promise<AuthSession
   }
 
   const userData = extractUserData(res)
-  const email = (request.email as string) || (userData?.email as string) || ""
+  const email = (userData?.email as string) || normalizeEmail(payload.email ?? "")  
   const fallbackName =
     payload.accountType === "owner" ? "Owner Account" : deriveDisplayNameFromEmail(email)
 
@@ -183,13 +178,26 @@ export async function signIn(payload: SignInRequestPayload): Promise<AuthSession
     fullName:
       (userData?.fullName as string) ||
       (userData?.name as string) ||
-      (userData?.userName as string) ||
+      `${userData?.firstName ?? ""} ${userData?.lastName ?? ""}`.trim() ||
       fallbackName,
+
     username:
       (userData?.username as string) ||
       (userData?.userName as string) ||
       fallbackName.toLowerCase().replace(/\s+/g, "_"),
-    phoneNumber: (userData?.phone as string) || (request.phone as string) || "",
+
+    phoneNumber: (userData?.phone as string) || "",
+
+    age: userData?.age as number,
+    gender: userData?.gender as string,
+    address:
+      (userData?.address as string) ||
+      (userData?.playgroundAddress as string) ||
+      "",
+
+    joinedAt: userData?.joinedAt as string,
+
+    position: (userData?.position as string) || "",
   })
 
   const userId =
@@ -214,6 +222,12 @@ export async function registerPlayer(
     email: normalizeEmail(payload.email),
     phone: payload.phone.trim(),
     password: payload.password,
+
+    age: payload.age,
+    gender: payload.gender,
+    address: payload.address,
+    joinedAt: payload.joinedAt,
+
     position: payload.position ?? null,
     skillLevel: payload.skillLevel,
   }
@@ -236,9 +250,7 @@ export async function registerOwner(
     payload,
   )
 
-  if (typeof response === "string") {
-    return response
-  }
+  if (typeof response === "string") return response
 
   return response.data ?? response.message ?? ""
 }
@@ -261,6 +273,11 @@ function profileFromStore(): UserProfile {
     position: u.position,
     points: u.points,
     avatarUrl: u.avatar || null,
+
+    age: u.age,
+    gender: u.gender,
+    address: u.address,
+    joinedAt: u.joinedAt,
   }
 }
 
@@ -269,7 +286,9 @@ export async function getCurrentUserProfile(): Promise<UserProfile> {
 }
 
 export async function updateCurrentUserProfile(
-  patch: Partial<Pick<UserProfile, "fullName" | "username" | "email" | "phoneNumber" | "position" | "avatarUrl">>,
+  patch: Partial<
+    Pick<UserProfile, "fullName" | "username" | "email" | "phoneNumber" | "position" | "avatarUrl">
+  >,
 ): Promise<UserProfile> {
   useUserStore.getState().updateUser({
     fullName: patch.fullName,
@@ -279,5 +298,6 @@ export async function updateCurrentUserProfile(
     position: patch.position,
     avatar: patch.avatarUrl ?? undefined,
   })
+
   return profileFromStore()
 }

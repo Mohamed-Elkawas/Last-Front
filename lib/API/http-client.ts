@@ -1,10 +1,266 @@
 ﻿const BASE_URL = process.env.NEXT_PUBLIC_API_URL
+const USE_MOCK = process.env.NEXT_PUBLIC_USE_MOCK === "true"
 
 type ApiErrorShape = {
   message?: unknown
   error?: unknown
   errors?: unknown
   isSuccess?: boolean
+}
+
+async function mockHandler<T>(url: string, options: RequestInit = {}): Promise<T> {
+  await new Promise((resolve) => setTimeout(resolve, 400))
+
+  // ================= AUTH =================
+  if (url.includes("/auth/register/player") || url.includes("/api/auth/register/player")) {
+    return {
+      isSuccess: true,
+      message: "Mock player registered",
+      data: null,
+      errors: null,
+    } as T
+  }
+
+  if (url.includes("/auth/register/owner") || url.includes("/api/auth/register/owner")) {
+    return {
+      isSuccess: true,
+      message: "Mock owner registered",
+      data: null,
+      errors: null,
+    } as T
+  }
+
+  if (url.includes("/auth/login") || url.includes("/api/auth/login")) {
+    const body = typeof options.body === "string" ? JSON.parse(options.body) : {}
+    const isOwner = body?.accountType === "owner" || body?.accountType === "Owner"
+
+    return {
+      isSuccess: true,
+      message: "Mock login success",
+      data: {
+        token: "mock-token",
+        user: {
+          id: 1,
+          firstName: isOwner ? "Owner" : "Player",
+          lastName: "Mock",
+          username: isOwner ? "owner_mock" : "player_mock",
+          email: isOwner ? "owner@test.com" : "player@test.com",
+          phone: "01000000000",
+          role: isOwner ? "owner" : "player",
+          accountType: isOwner ? "owner" : "player",
+        },
+      },
+      errors: null,
+    } as T
+  }
+
+  if (url.includes("/auth/verify-otp") || url.includes("/api/auth/verify-otp")) {
+    return {
+      isSuccess: true,
+      message: "Mock OTP verified",
+      data: null,
+      errors: null,
+    } as T
+  }
+
+  if (url.includes("/auth/forgot-password") || url.includes("/api/auth/forgot-password")) {
+    return {
+      isSuccess: true,
+      message: "Mock OTP sent",
+      data: null,
+      errors: null,
+    } as T
+  }
+
+  if (url.includes("/auth/reset-password") || url.includes("/api/auth/reset-password")) {
+    return {
+      isSuccess: true,
+      message: "Mock password reset",
+      data: null,
+      errors: null,
+    } as T
+  }
+
+  // ================= NOTIFICATIONS =================
+  if (url === "/notifications" || url === "/api/notifications") {
+    return {
+      isSuccess: true,
+      message: null,
+      data: [],
+      errors: null,
+    } as T
+  }
+
+  if (url.includes("/notifications/") && url.includes("/read")) {
+    return {
+      isSuccess: true,
+      message: "Mock notification marked as read",
+      data: null,
+      errors: null,
+    } as T
+  }
+
+  if (url === "/notifications/read-all" || url === "/api/notifications/read-all") {
+    return {
+      isSuccess: true,
+      message: "Mock all notifications marked as read",
+      data: null,
+      errors: null,
+    } as T
+  }
+
+  // ================= PLAYGROUNDS =================
+  if (url.includes("/playgrounds") || url.includes("/api/playgrounds")) {
+    return {
+      isSuccess: true,
+      message: null,
+      data: [
+        {
+          id: "pg-1",
+          name: { en: "El Geish Stadium", ar: "ملعب الجيش" },
+          address: { en: "Cairo, Egypt", ar: "القاهرة، مصر" },
+          pricePerHour: 250,
+          rating: 4.7,
+          imageUrl: "/placeholder.jpg",
+          slots: [
+            { startTime: "18:00", endTime: "19:00", slotKey: "18-19" },
+            { startTime: "19:00", endTime: "20:00", slotKey: "19-20" },
+            { startTime: "20:00", endTime: "21:00", slotKey: "20-21" },
+          ],
+        },
+        {
+          id: "pg-2",
+          name: { en: "Smart Arena", ar: "سمارت أرينا" },
+          address: { en: "Giza, Egypt", ar: "الجيزة، مصر" },
+          pricePerHour: 300,
+          rating: 4.9,
+          imageUrl: "/placeholder.jpg",
+          slots: [
+            { startTime: "17:00", endTime: "18:00", slotKey: "17-18" },
+            { startTime: "21:00", endTime: "22:00", slotKey: "21-22" },
+          ],
+        },
+      ],
+      errors: null,
+    } as T
+  }
+
+  // ================= BOOKINGS =================
+  if (
+    options.method === "POST" &&
+    (url.includes("/bookings") || url.includes("/api/bookings"))
+  ) {
+    return {
+      isSuccess: true,
+      message: "Mock booking created",
+      data: {
+        id: `booking-${Date.now()}`,
+        status: "pending_payment",
+        paymentStatus: "pending",
+      },
+      errors: null,
+    } as T
+  }
+
+  if (
+    options.method === "PATCH" &&
+    (url.includes("/bookings") || url.includes("/api/bookings"))
+  ) {
+    return {
+      isSuccess: true,
+      message: "Mock booking updated",
+      data: null,
+      errors: null,
+    } as T
+  }
+
+  if (url.includes("/bookings") || url.includes("/api/bookings")) {
+    return {
+      isSuccess: true,
+      message: null,
+      data: [
+        {
+          id: "booking-1",
+          status: "pending_payment",
+          paymentStatus: "pending",
+          date: "2026-05-01",
+          playground: {
+            id: "pg-1",
+            name: { en: "El Geish Stadium", ar: "ملعب الجيش" },
+          },
+          slots: [{ startTime: "18:00", endTime: "19:00", slotKey: "18-19" }],
+          totalPrice: 250,
+        },
+        {
+          id: "booking-2",
+          status: "confirmed",
+          paymentStatus: "paid",
+          date: "2026-05-02",
+          playground: {
+            id: "pg-2",
+            name: { en: "Smart Arena", ar: "سمارت أرينا" },
+          },
+          slots: [{ startTime: "20:00", endTime: "21:00", slotKey: "20-21" }],
+          totalPrice: 300,
+        },
+      ],
+      errors: null,
+    } as T
+  }
+
+  // ================= TOURNAMENTS =================
+  if (
+    options.method === "POST" &&
+    (url.includes("/tournaments") || url.includes("/api/tournaments"))
+  ) {
+    return {
+      isSuccess: true,
+      message: "Mock tournament action success",
+      data: {
+        id: `tournament-registration-${Date.now()}`,
+        status: "pending_payment",
+      },
+      errors: null,
+    } as T
+  }
+
+  if (url.includes("/tournaments") || url.includes("/api/tournaments")) {
+    return {
+      isSuccess: true,
+      message: null,
+      data: [
+        {
+          id: "t-1",
+          name: { en: "Ramadan Cup", ar: "كأس رمضان" },
+          status: "open",
+          entryFee: 500,
+          maxTeams: 16,
+          registeredTeams: 8,
+          date: "2026-05-10",
+          playground: {
+            id: "pg-1",
+            name: { en: "El Geish Stadium", ar: "ملعب الجيش" },
+          },
+        },
+        {
+          id: "t-2",
+          name: { en: "Champions League", ar: "دوري الأبطال" },
+          status: "open",
+          entryFee: 700,
+          maxTeams: 12,
+          registeredTeams: 5,
+          date: "2026-05-20",
+          playground: {
+            id: "pg-2",
+            name: { en: "Smart Arena", ar: "سمارت أرينا" },
+          },
+        },
+      ],
+      errors: null,
+    } as T
+  }
+
+  throw new Error(`Mock not implemented for: ${url}`)
 }
 
 function parseApiResponse(text: string): unknown {
@@ -35,6 +291,11 @@ function getErrorMessage(data: unknown, fallback: string): string {
 }
 
 export async function http<T>(url: string, options: RequestInit = {}): Promise<T> {
+  if (USE_MOCK || BASE_URL === "mock") {
+    console.log("[MOCK MODE]", url)
+    return mockHandler<T>(url, options)
+  }
+
   if (!BASE_URL) {
     throw new Error("NEXT_PUBLIC_API_URL is not configured")
   }
@@ -43,6 +304,7 @@ export async function http<T>(url: string, options: RequestInit = {}): Promise<T
   const headers = new Headers(options.headers || undefined)
 
   headers.set("Content-Type", "application/json")
+  headers.set("ngrok-skip-browser-warning", "true")
 
   if (token) {
     headers.set("Authorization", `Bearer ${token}`)

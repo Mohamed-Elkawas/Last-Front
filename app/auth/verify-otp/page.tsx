@@ -1,25 +1,57 @@
 "use client"
 
-import { Suspense } from "react"
-import { useEffect, useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
+import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { ArrowLeft } from "lucide-react"
+import { ArrowLeft, Mail } from "lucide-react"
+
 import { AppLogo } from "@/components/ui/app-logo"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Label } from "@/components/ui/label"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { InputOTP, InputOTPGroup, InputOTPSlot } from "@/components/ui/input-otp"
-import Link from "next/link"
 import { useTranslate } from "@/hooks/use-translate"
 import { verifyPasswordResetOtp, verifyRegisterOtp } from "@/lib/services/auth.service"
 import { AUTH_ROUTES, getSignInRoute } from "@/lib/auth/routes"
 
-const PENDING_VERIFICATION_KEY = "hagzaya-auth-pending-verification"
+const PENDING_REGISTER_KEY = "hagzaya-auth-pending-verification"
 const PENDING_RESET_KEY = "hagzaya-auth-pending-reset"
+
+type AccountType = "player" | "owner"
+type OtpPurpose = "register" | "reset"
+
+type PendingOtpData = {
+  email: string
+  accountType?: AccountType
+  purpose?: OtpPurpose
+}
 
 function isOtpValid(value: string) {
   return /^[0-9]{6}$/.test(value)
+}
+
+function readPendingData(purpose: OtpPurpose): PendingOtpData | null {
+  if (typeof window === "undefined") return null
+
+  const storageKey = purpose === "reset" ? PENDING_RESET_KEY : PENDING_REGISTER_KEY
+  const raw = sessionStorage.getItem(storageKey)
+
+  if (!raw) return null
+
+  try {
+    const parsed = JSON.parse(raw) as PendingOtpData
+
+    if (!parsed?.email) return null
+
+    return parsed
+  } catch {
+    return null
+  }
 }
 
 function VerifyOtpPageContent() {
@@ -28,59 +60,36 @@ function VerifyOtpPageContent() {
   const { t, isArabic } = useTranslate()
 
   const [email, setEmail] = useState("")
-  const [accountType, setAccountType] = useState<"player" | "owner">("player")
-  const [purpose, setPurpose] = useState<"register" | "reset">("register")
+  const [accountType, setAccountType] = useState<AccountType>("player")
+  const [purpose, setPurpose] = useState<OtpPurpose>("register")
   const [otp, setOtp] = useState("")
   const [error, setError] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [isLoaded, setIsLoaded] = useState(false)
 
+  const backHref = useMemo(() => {
+    return purpose === "reset" ? AUTH_ROUTES.forgotPassword : getSignInRoute(accountType)
+  }, [accountType, purpose])
+
   useEffect(() => {
-    const queryPurpose = searchParams.get("purpose")
-    const queryType = searchParams.get("type")
-    const pendingRaw = sessionStorage.getItem(PENDING_VERIFICATION_KEY)
+    const queryPurpose = searchParams.get("purpose") === "reset" ? "reset" : "register"
+    const queryType = searchParams.get("type") === "owner" ? "owner" : "player"
 
-    if (queryPurpose === "reset") {
-      setPurpose("reset")
-    } else {
-      setPurpose("register")
-    }
+    setPurpose(queryPurpose)
+    setAccountType(queryType)
 
-    if (queryType === "owner") {
-      setAccountType("owner")
-    } else {
-      setAccountType("player")
-    }
+    const pending = readPendingData(queryPurpose)
 
-    if (!pendingRaw) {
-      setError(t("auth.pendingVerificationMissing") || "لا توجد بيانات للتحقق")
+    if (!pending) {
+      setError(t("auth.pendingVerificationMissing"))
       setIsLoaded(true)
       return
     }
 
-    try {
-      const pending = JSON.parse(pendingRaw) as {
-        email: string
-        accountType?: "player" | "owner"
-        purpose?: "register" | "reset"
-      }
-
-      if (!pending?.email) {
-        throw new Error("Missing pending email")
-      }
-
-      setEmail(pending.email)
-      if (pending.accountType) {
-        setAccountType(pending.accountType)
-      }
-      if (pending.purpose === "reset") {
-        setPurpose("reset")
-      }
-    } catch {
-      setError(t("auth.pendingVerificationInvalid") || "تعذر قراءة بيانات التحقق")
-    } finally {
-      setIsLoaded(true)
-    }
+    setEmail(pending.email)
+    setAccountType(pending.accountType ?? queryType)
+    setPurpose(pending.purpose ?? queryPurpose)
+    setIsLoaded(true)
   }, [searchParams, t])
 
   const canVerify = isOtpValid(otp) && !isLoading && isLoaded && !!email
@@ -90,12 +99,12 @@ function VerifyOtpPageContent() {
     setError("")
 
     if (!email) {
-      setError(t("auth.pendingVerificationMissing") || "لا توجد بيانات للتحقق")
+      setError(t("auth.pendingVerificationMissing"))
       return
     }
 
     if (!isOtpValid(otp)) {
-      setError(t("auth.invalidOtp") || "رمز التحقق غير صالح")
+      setError(t("auth.invalidOtp"))
       return
     }
 
@@ -103,19 +112,35 @@ function VerifyOtpPageContent() {
 
     try {
       if (purpose === "register") {
-        await verifyRegisterOtp({ email, otpCode: otp, accountType })
-        sessionStorage.removeItem(PENDING_VERIFICATION_KEY)
+        await verifyRegisterOtp({
+          email,
+          otpCode: otp,
+          accountType,
+        })
+
+        sessionStorage.removeItem(PENDING_REGISTER_KEY)
         router.push(getSignInRoute(accountType))
-      } else {
-        await verifyPasswordResetOtp({ email, otpCode: otp })
-        sessionStorage.setItem(
-          PENDING_RESET_KEY,
-          JSON.stringify({ email, otpCode: otp, accountType })
-        )
-        router.push(AUTH_ROUTES.resetPassword)
+        return
       }
+
+      await verifyPasswordResetOtp({
+        email,
+        otpCode: otp,
+      })
+
+      sessionStorage.setItem(
+        PENDING_RESET_KEY,
+        JSON.stringify({
+          email,
+          otpCode: otp,
+          accountType,
+          purpose: "reset",
+        }),
+      )
+
+      router.push(AUTH_ROUTES.resetPassword)
     } catch (err) {
-      setError(err instanceof Error ? err.message : t("auth.unexpectedError") || "حدث خطأ غير متوقع")
+      setError(err instanceof Error ? err.message : t("auth.unexpectedError"))
     } finally {
       setIsLoading(false)
     }
@@ -130,15 +155,18 @@ function VerifyOtpPageContent() {
           </div>
         </div>
 
-        <Card>
+        <Card className="rounded-2xl shadow-sm">
           <CardHeader className="text-center">
             <CardTitle className="text-2xl">
-              {purpose === "register" ? t("auth.verifyOtpTitle") : t("auth.verifyResetOtpTitle")}
+              {purpose === "reset"
+                ? t("auth.verifyResetOtpTitle")
+                : t("auth.verifyOtpTitle")}
             </CardTitle>
+
             <CardDescription>
-              {purpose === "register"
-                ? t("auth.verifyOtpDescription")
-                : t("auth.verifyResetOtpDescription")}
+              {purpose === "reset"
+                ? t("auth.verifyResetOtpDescription")
+                : t("auth.verifyOtpDescription")}
             </CardDescription>
           </CardHeader>
 
@@ -149,35 +177,71 @@ function VerifyOtpPageContent() {
               </div>
             ) : null}
 
-            <form onSubmit={handleSubmit} className="space-y-6">
-              <div className="space-y-2">
-                <Label>{t("auth.email")}</Label>
-                <Input value={email} disabled />
+            {!email && isLoaded ? (
+              <div className="space-y-4">
+                <Button className="w-full" asChild>
+                  <Link href={purpose === "reset" ? AUTH_ROUTES.forgotPassword : getSignInRoute(accountType)}>
+                    {purpose === "reset"
+                      ? t("auth.backToForgotPassword")
+                      : t("auth.backToSignIn")}
+                  </Link>
+                </Button>
               </div>
+            ) : (
+              <form onSubmit={handleSubmit} className="space-y-6">
+                <div className="flex items-center justify-center gap-3 rounded-xl border border-green-200 bg-green-50 px-4 py-3 text-base font-bold text-green-800 shadow-sm">
+                  <Mail className="h-5 w-5 text-green-600" />
+                  <span className="truncate">{email}</span>
+                </div>
 
-              <div className="space-y-2">
-                <Label>{t("auth.verificationCode")}</Label>
-<InputOTP maxLength={6} value={otp} onChange={(value) => setOtp(value)}>                  <InputOTPGroup>
-                    <InputOTPSlot index={0} />
-                    <InputOTPSlot index={1} />
-                    <InputOTPSlot index={2} />
-                    <InputOTPSlot index={3} />
-                    <InputOTPSlot index={4} />
-                    <InputOTPSlot index={5} />
-                  </InputOTPGroup>
-                </InputOTP>
-              </div>
+                <div className="space-y-2">
+                  <p className="mt-4 text-center text-base font-bold text-foreground">
+                    {t("auth.verificationCode")}
+                  </p>
 
-              <Button type="submit" className="w-full" disabled={!canVerify}>
-                {isLoading ? t("auth.verifying") : t("auth.verifyCode")}
-              </Button>
+                  <p className="mb-2 text-center text-sm text-muted-foreground">
+                    {t("auth.enterSixDigitCode")}
+                  </p>
 
-              <div className="text-center">
-                <Link href={AUTH_ROUTES.signIn.player} className="inline-flex items-center gap-1 text-sm text-primary hover:underline">
-                  <ArrowLeft className={`h-4 w-4 ${isArabic ? "rotate-180" : ""}`} /> {t("auth.backToSignIn")}
-                </Link>
-              </div>
-            </form>
+                  <InputOTP
+                    maxLength={6}
+                    value={otp}
+                    onChange={(value) => setOtp(value)}
+                    className="flex justify-center"
+                  >
+                    <InputOTPGroup className="flex justify-center gap-3" dir="ltr">
+                      {[0, 1, 2, 3, 4, 5].map((index) => (
+                        <InputOTPSlot
+                          key={index}
+                          index={index}
+                          className="h-14 w-14 rounded-xl border border-green-300 text-center text-xl font-bold shadow-sm focus:border-green-600 focus:ring-2 focus:ring-green-600/20"
+                        />
+                      ))}
+                    </InputOTPGroup>
+                  </InputOTP>
+                </div>
+
+                <Button
+                  type="submit"
+                  className="h-12 w-full rounded-xl bg-green-600 text-base font-bold text-white hover:bg-green-700"
+                  disabled={!canVerify}
+                >
+                  {isLoading ? t("auth.verifying") : t("auth.verifyCode")}
+                </Button>
+
+                <div className="text-center">
+                  <Link
+                    href={backHref}
+                    className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                  >
+                    <ArrowLeft className={`h-4 w-4 ${isArabic ? "rotate-180" : ""}`} />
+                    {purpose === "reset"
+                      ? t("auth.backToForgotPassword")
+                      : t("auth.backToSignIn")}
+                  </Link>
+                </div>
+              </form>
+            )}
           </CardContent>
         </Card>
       </div>
@@ -191,9 +255,9 @@ function VerifyOtpFallback() {
       <Card className="w-full max-w-md">
         <CardContent className="pt-6">
           <div className="animate-pulse space-y-4">
-            <div className="h-8 bg-muted rounded" />
-            <div className="h-10 bg-muted rounded" />
-            <div className="h-10 bg-muted rounded" />
+            <div className="h-8 rounded bg-muted" />
+            <div className="h-10 rounded bg-muted" />
+            <div className="h-10 rounded bg-muted" />
           </div>
         </CardContent>
       </Card>

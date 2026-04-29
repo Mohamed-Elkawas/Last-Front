@@ -11,15 +11,11 @@ import {
   UserPlus,
   X,
   Check,
-  Settings,
 } from "lucide-react"
 
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Switch } from "@/components/ui/switch"
-import { Label } from "@/components/ui/label"
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { AppShell } from "@/components/layout/app-shell"
 import { useTranslate } from "@/hooks/use-translate"
 import { useNotifications } from "@/hooks/use-notifications"
@@ -28,59 +24,29 @@ import type { NotificationType } from "@/lib/types/notification"
 export default function NotificationsPage() {
   const { t, language } = useTranslate()
   const {
-    items,
+    notifications,
     unreadCount,
-    settings,
-    hasHydrated,
-    setSetting,
+    isLoading,
+    error,
     markAsRead,
     markAllAsRead,
-    removeNotification,
-    clearAllNotifications,
   } = useNotifications()
 
   const [sortBy, setSortBy] = useState<"newest" | "oldest" | "unread">("newest")
-
-  const notificationSettings = useMemo(
-    () => [
-      {
-        id: "booking" as const,
-        label: t("notifications.bookingEvents"),
-        description: t("notifications.bookingEventsDesc"),
-      },
-      {
-        id: "tournament" as const,
-        label: t("notifications.tournamentEvents"),
-        description: t("notifications.tournamentEventsDesc"),
-      },
-      {
-        id: "owner" as const,
-        label: t("notifications.ownerEvents"),
-        description: t("notifications.ownerEventsDesc"),
-      },
-      {
-        id: "system" as const,
-        label: t("notifications.systemEvents"),
-        description: t("notifications.systemEventsDesc"),
-      },
-    ],
-    [t],
-  )
 
   const getIcon = (type: NotificationType) => {
     switch (type) {
       case "payment_submitted":
         return CreditCard
       case "booking_created":
+      case "booking_approved":
+      case "booking_rejected":
         return Calendar
       case "booking_cancelled":
         return X
       case "tournament_joined":
       case "tournament_created":
         return Trophy
-      case "booking_approved":
-      case "booking_rejected":
-        return UserPlus
       case "owner_booking_request":
       case "owner_booking_payment":
       case "owner_tournament_registration":
@@ -95,15 +61,14 @@ export default function NotificationsPage() {
       case "payment_submitted":
         return "bg-green-500"
       case "booking_created":
+      case "booking_approved":
         return "bg-blue-500"
       case "booking_cancelled":
+      case "booking_rejected":
         return "bg-red-500"
       case "tournament_joined":
       case "tournament_created":
         return "bg-yellow-500"
-      case "booking_approved":
-      case "booking_rejected":
-        return "bg-purple-500"
       case "owner_booking_request":
       case "owner_booking_payment":
       case "owner_tournament_registration":
@@ -113,7 +78,7 @@ export default function NotificationsPage() {
     }
   }
 
-  const formatTimestamp = (createdAt: number) => {
+  const formatTimestamp = (createdAt: string) => {
     const locale = language === "ar" ? "ar-EG" : "en-US"
 
     return new Date(createdAt).toLocaleString(locale, {
@@ -124,17 +89,22 @@ export default function NotificationsPage() {
     })
   }
 
-  const sortedNotifications = [...items].sort((a, b) => {
-    if (sortBy === "unread" && a.isRead !== b.isRead) {
-      return a.isRead ? 1 : -1
-    }
+  const sortedNotifications = useMemo(() => {
+    return [...notifications].sort((a, b) => {
+      if (sortBy === "unread" && a.isRead !== b.isRead) {
+        return a.isRead ? 1 : -1
+      }
 
-    if (sortBy === "oldest") {
-      return a.createdAt - b.createdAt
-    }
+      const aTime = new Date(a.createdAt).getTime()
+      const bTime = new Date(b.createdAt).getTime()
 
-    return b.createdAt - a.createdAt
-  })
+      if (sortBy === "oldest") {
+        return aTime - bTime
+      }
+
+      return bTime - aTime
+    })
+  }, [notifications, sortBy])
 
   const subtitle =
     unreadCount === 0
@@ -149,8 +119,6 @@ export default function NotificationsPage() {
     return t("notifications.unread")
   }
 
-  if (!hasHydrated) return null
-
   return (
     <AppShell>
       <div className="mx-auto max-w-4xl px-6 py-8">
@@ -162,55 +130,60 @@ export default function NotificationsPage() {
             <p className="mt-2 text-muted-foreground">{subtitle}</p>
           </div>
 
-          <div className="flex items-center gap-2">
-            {items.length > 0 ? (
-              <Button variant="outline" onClick={clearAllNotifications}>
-                <X className="me-2 h-4 w-4" />
-                {t("notifications.clearAll")}
-              </Button>
-            ) : null}
-
-            {unreadCount > 0 ? (
-              <Button variant="outline" onClick={markAllAsRead}>
-                <Check className="me-2 h-4 w-4" />
-                {t("notifications.markAllRead")}
-              </Button>
-            ) : null}
-          </div>
+          {unreadCount > 0 ? (
+            <Button variant="outline" onClick={markAllAsRead}>
+              <Check className="me-2 h-4 w-4" />
+              {t("notifications.markAllRead")}
+            </Button>
+          ) : null}
         </div>
 
-        <Tabs defaultValue="notifications">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="notifications" className="gap-2">
-              {t("notifications.tabNotifications")}
-              {unreadCount > 0 && <Badge variant="secondary">{unreadCount}</Badge>}
-            </TabsTrigger>
+        <Card>
+          <CardContent className="p-4">
+            <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <Bell className="h-5 w-5 text-primary" />
+                <span className="font-semibold">
+                  {t("notifications.tabNotifications")}
+                </span>
 
-            <TabsTrigger value="settings" className="gap-2">
-              <Settings className="h-4 w-4" />
-              {t("notifications.tabSettings")}
-            </TabsTrigger>
-          </TabsList>
+                {unreadCount > 0 ? (
+                  <Badge variant="secondary">{unreadCount}</Badge>
+                ) : null}
+              </div>
 
-          <TabsContent value="notifications" className="mt-6">
-            <div className="mb-4 flex flex-wrap items-center gap-2">
-              <span className="text-sm text-muted-foreground">
-                {t("notifications.sortBy")}:
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm text-muted-foreground">
+                  {t("notifications.sortBy")}:
+                </span>
 
-              {(["newest", "oldest", "unread"] as const).map((option) => (
-                <Button
-                  key={option}
-                  variant={sortBy === option ? "default" : "outline"}
-                  size="sm"
-                  onClick={() => setSortBy(option)}
-                >
-                  {sortLabel(option)}
-                </Button>
-              ))}
+                {(["newest", "oldest", "unread"] as const).map((option) => (
+                  <Button
+                    key={option}
+                    variant={sortBy === option ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => setSortBy(option)}
+                  >
+                    {sortLabel(option)}
+                  </Button>
+                ))}
+              </div>
             </div>
 
-            {sortedNotifications.length > 0 ? (
+            {isLoading ? (
+              <div className="flex flex-col items-center justify-center py-16 text-center">
+                <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
+                  <Bell className="h-8 w-8 animate-pulse text-muted-foreground" />
+                </div>
+                <h3 className="mt-4 text-lg font-semibold text-foreground">
+                  جاري تحميل الإشعارات...
+                </h3>
+              </div>
+            ) : error ? (
+              <div className="rounded-xl border border-destructive/30 bg-destructive/10 p-4 text-sm text-destructive">
+                {error}
+              </div>
+            ) : sortedNotifications.length > 0 ? (
               <div className="space-y-3">
                 {sortedNotifications.map((notification) => {
                   const Icon = getIcon(notification.type)
@@ -250,44 +223,39 @@ export default function NotificationsPage() {
                                 <Link
                                   href={notification.actionHref}
                                   className="mt-2 inline-block text-xs text-primary hover:underline"
+                                  onClick={() => {
+                                    if (!notification.isRead) {
+                                      markAsRead(notification.id)
+                                    }
+                                  }}
                                 >
                                   {t("notifications.viewAction")}
                                 </Link>
                               ) : null}
                             </div>
 
-                            {!notification.isRead && (
+                            {!notification.isRead ? (
                               <div className="mt-1 h-2 w-2 shrink-0 rounded-full bg-primary" />
-                            )}
+                            ) : null}
                           </div>
                         </div>
 
-                        <div className="flex shrink-0 gap-1">
-                          {!notification.isRead && (
-                            <Button
-                              variant="ghost"
-                              size="sm"
-                              onClick={() => markAsRead(notification.id)}
-                            >
-                              <Check className="h-4 w-4" />
-                            </Button>
-                          )}
-
+                        {!notification.isRead ? (
                           <Button
                             variant="ghost"
                             size="sm"
-                            onClick={() => removeNotification(notification.id)}
+                            onClick={() => markAsRead(notification.id)}
                           >
-                            <X className="h-4 w-4" />
+                            <Check className="h-4 w-4" />
                           </Button>
-                        </div>
+                        ) : null}
                       </CardContent>
                     </Card>
                   )
                 })}
               </div>
             ) : (
-              <div className="flex flex-col items-center justify-center py-16">
+              <div className="flex flex-col items-center justify-center py-16 text-center">
                 <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
                   <Bell className="h-8 w-8 text-muted-foreground" />
                 </div>
@@ -299,40 +267,8 @@ export default function NotificationsPage() {
                 </p>
               </div>
             )}
-          </TabsContent>
-
-          <TabsContent value="settings" className="mt-6">
-            <Card>
-              <CardHeader>
-                <CardTitle>{t("notifications.preferencesTitle")}</CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-6">
-                {notificationSettings.map((setting) => (
-                  <div
-                    key={setting.id}
-                    className="flex items-center justify-between gap-4"
-                  >
-                    <div className="min-w-0">
-                      <Label htmlFor={setting.id} className="text-base font-medium">
-                        {setting.label}
-                      </Label>
-                      <p className="text-sm text-muted-foreground">
-                        {setting.description}
-                      </p>
-                    </div>
-
-                    <Switch
-                      id={setting.id}
-                      checked={settings[setting.id]}
-                      onCheckedChange={(checked) => setSetting(setting.id, checked)}
-                    />
-                  </div>
-                ))}
-              </CardContent>
-            </Card>
-          </TabsContent>
-        </Tabs>
+          </CardContent>
+        </Card>
       </div>
     </AppShell>
   )

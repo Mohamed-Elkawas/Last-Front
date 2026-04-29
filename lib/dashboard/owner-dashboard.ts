@@ -24,111 +24,121 @@ export type UpcomingBooking = {
   currency: string
 }
 
-/**
- * Get today's date in YYYY-MM-DD format
- */
 function getTodayDate(): string {
-  return new Date().toISOString().split('T')[0]
+  return new Date().toISOString().split("T")[0]
 }
 
-/**
- * Check if a booking is for today (playground bookings)
- */
 function isTodayBooking(booking: PersistedBooking): boolean {
-  if (booking.kind === 'playground' && booking.playground) {
+  if (booking.kind === "playground" && booking.playground) {
     return booking.playground.date === getTodayDate()
   }
-  // For tournaments, consider created today as today booking
-  if (booking.kind === 'tournament') {
-    const createdDate = new Date(booking.createdAt).toISOString().split('T')[0]
+
+  if (booking.kind === "tournament") {
+    const createdDate = new Date(booking.createdAt).toISOString().split("T")[0]
     return createdDate === getTodayDate()
   }
+
   return false
 }
 
-/**
- * Check if booking is confirmed
- */
 function isConfirmedBooking(booking: PersistedBooking): boolean {
-  return booking.status === 'confirmed'
+  return booking.status === "confirmed"
 }
 
-/**
- * Check if booking is pending owner review
- */
 function isPendingOwnerReview(booking: PersistedBooking): boolean {
-  return booking.status === 'awaiting_admin_approval'
+  return booking.status === "awaiting_admin_approval"
 }
 
-/**
- * Check if booking contributes to revenue (confirmed and paid)
- */
-function isRevenueEligible(booking: PersistedBooking): boolean {
-  return booking.status === 'confirmed'
-}
-
-/**
- * Get total amount for a booking
- */
 function getBookingAmount(booking: PersistedBooking): number {
-  if (booking.kind === 'playground' && booking.playground) {
+  if (booking.kind === "playground" && booking.playground) {
     return booking.playground.total
   }
-  if (booking.kind === 'tournament' && booking.tournament) {
+
+  if (booking.kind === "tournament" && booking.tournament) {
     return booking.tournament.total
   }
+
   return 0
 }
 
-/**
- * Check if booking is upcoming (future date)
- */
 function isUpcomingBooking(booking: PersistedBooking): boolean {
   const now = new Date()
-  if (booking.kind === 'playground' && booking.playground) {
-    const bookingDate = new Date(booking.playground.date)
-    return bookingDate > now
+
+  if (booking.kind === "playground" && booking.playground) {
+    const firstSlot = booking.playground.slots?.[0]
+    const start = firstSlot?.startTime ?? "00:00"
+    const bookingStart = new Date(`${booking.playground.date}T${start}:00`)
+
+    return bookingStart > now
   }
-  // For tournaments, assume upcoming if not expired
+
   return booking.expiresAt > now.getTime()
 }
 
-/**
- * Check if booking is no-show candidate
- */
-function isNoShowCandidate(booking: PersistedBooking): boolean {
-  // Mock logic: confirmed bookings that are past their time
-  if (booking.status === 'confirmed') {
-    const now = new Date()
-    if (booking.kind === 'playground' && booking.playground) {
-      const endTime = new Date(`${booking.playground.date}T${booking.playground.slots.split(' - ')[1]}:00`)
-      return endTime < now
-    }
+function getPlaygroundStartIso(booking: PersistedBooking): string {
+  if (booking.kind !== "playground" || !booking.playground) {
+    return new Date(booking.createdAt).toISOString()
   }
+
+  const firstSlot = booking.playground.slots?.[0]
+
+  if (!firstSlot?.startTime) {
+    return new Date(booking.createdAt).toISOString()
+  }
+
+  return `${booking.playground.date}T${firstSlot.startTime}:00Z`
+}
+
+function getPlaygroundEndIso(booking: PersistedBooking): string {
+  if (booking.kind !== "playground" || !booking.playground) {
+    return new Date(booking.expiresAt).toISOString()
+  }
+
+  const lastSlot = booking.playground.slots?.[booking.playground.slots.length - 1]
+
+  if (!lastSlot?.endTime) {
+    return new Date(booking.expiresAt).toISOString()
+  }
+
+  return `${booking.playground.date}T${lastSlot.endTime}:00Z`
+}
+
+function isNoShowCandidate(booking: PersistedBooking): boolean {
+  if (booking.status !== "confirmed") return false
+
+  if (booking.kind === "playground" && booking.playground) {
+    const lastSlot = booking.playground.slots?.[booking.playground.slots.length - 1]
+    const end = lastSlot?.endTime ?? "00:00"
+    const endTime = new Date(`${booking.playground.date}T${end}:00`)
+
+    return endTime < new Date()
+  }
+
   return false
 }
 
-/**
- * Check if tournament is in progress
- */
 function isTournamentInProgress(booking: PersistedBooking): boolean {
-  return booking.kind === 'tournament' && booking.status === 'confirmed'
+  return booking.kind === "tournament" && booking.status === "confirmed"
 }
 
-/**
- * Compute owner dashboard stats from bookings
- */
-export function getOwnerDashboardStats(bookings: PersistedBooking[]): OwnerDashboardStats {
+export function getOwnerDashboardStats(
+  bookings: PersistedBooking[],
+): OwnerDashboardStats {
   const todayBookings = bookings.filter(isTodayBooking)
   const confirmedToday = todayBookings.filter(isConfirmedBooking)
   const pendingReviews = bookings.filter(isPendingOwnerReview)
-  const revenueToday = confirmedToday.reduce((sum, b) => sum + getBookingAmount(b), 0)
-  
-  // Mock utilization: assume 20 total slots, count booked slots today
+  const revenueToday = confirmedToday.reduce(
+    (sum, booking) => sum + getBookingAmount(booking),
+    0,
+  )
+
   const totalSlots = 20
-  const bookedSlotsToday = todayBookings.length // rough approximation
-  const utilizationRate = totalSlots > 0 ? Math.round((bookedSlotsToday / totalSlots) * 100 * 10) / 10 : 0
-  
+  const bookedSlotsToday = todayBookings.length
+  const utilizationRate =
+    totalSlots > 0
+      ? Math.round((bookedSlotsToday / totalSlots) * 100 * 10) / 10
+      : 0
+
   const noShowCandidates = bookings.filter(isNoShowCandidate).length
   const tournamentsInProgress = bookings.filter(isTournamentInProgress).length
 
@@ -143,29 +153,48 @@ export function getOwnerDashboardStats(bookings: PersistedBooking[]): OwnerDashb
   }
 }
 
-/**
- * Get upcoming bookings for owner dashboard
- */
-export function getUpcomingOwnerBookings(bookings: PersistedBooking[]): UpcomingBooking[] {
+export function getUpcomingOwnerBookings(
+  bookings: PersistedBooking[],
+): UpcomingBooking[] {
   return bookings
-    .filter(b => isUpcomingBooking(b) && ['pending_payment', 'payment_submitted', 'awaiting_admin_approval', 'confirmed'].includes(b.status))
+    .filter(
+      (booking) =>
+        isUpcomingBooking(booking) &&
+        [
+          "pending_payment",
+          "payment_submitted",
+          "awaiting_admin_approval",
+          "confirmed",
+        ].includes(booking.status),
+    )
     .sort((a, b) => {
-      // Sort by date/time
-      if (a.kind === 'playground' && b.kind === 'playground' && a.playground && b.playground) {
-        return new Date(a.playground.date).getTime() - new Date(b.playground.date).getTime()
+      if (
+        a.kind === "playground" &&
+        b.kind === "playground" &&
+        a.playground &&
+        b.playground
+      ) {
+        return (
+          new Date(a.playground.date).getTime() -
+          new Date(b.playground.date).getTime()
+        )
       }
+
       return a.createdAt - b.createdAt
     })
-    .slice(0, 5) // Limit to 5
-    .map(booking => ({
+    .slice(0, 5)
+    .map((booking) => ({
       id: booking.id,
       bookingCode: `BK-${booking.id.slice(-4).toUpperCase()}`,
-      fieldName: booking.kind === 'playground' && booking.playground ? booking.playground.name.en : 'Tournament',
-      customerName: booking.playerDisplayName || 'Unknown Player',
-      customerType: booking.kind === 'playground' ? 'player' : 'team',
-      startTime: booking.kind === 'playground' && booking.playground ? `${booking.playground.date}T${booking.playground.slots.split(' - ')[0]}:00Z` : new Date(booking.createdAt).toISOString(),
-      endTime: booking.kind === 'playground' && booking.playground ? `${booking.playground.date}T${booking.playground.slots.split(' - ')[1]}:00Z` : new Date(booking.expiresAt).toISOString(),
+      fieldName:
+        booking.kind === "playground" && booking.playground
+          ? booking.playground.name.en
+          : "Tournament",
+      customerName: booking.playerDisplayName || "Unknown Player",
+      customerType: booking.kind === "playground" ? "player" : "team",
+      startTime: getPlaygroundStartIso(booking),
+      endTime: getPlaygroundEndIso(booking),
       amount: getBookingAmount(booking),
-      currency: 'EGP',
+      currency: "EGP",
     }))
 }

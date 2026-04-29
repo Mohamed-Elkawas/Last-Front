@@ -5,11 +5,13 @@ export type NotificationAudience = "player" | "owner" | "both"
 export type NotificationType =
   | "booking_created"
   | "booking_cancelled"
-  | "tournament_joined"
-  | "tournament_created"
+  | "payment_required"
+  | "payment_submitted"
+  | "owner_approval_pending"
   | "booking_approved"
   | "booking_rejected"
-  | "payment_submitted"
+  | "tournament_joined"
+  | "tournament_created"
   | "owner_booking_request"
   | "owner_booking_payment"
   | "owner_tournament_registration"
@@ -27,15 +29,25 @@ export type AppNotification = {
   type: NotificationType
   title: string
   message: string
-  createdAt: number
+  createdAt: string
   isRead: boolean
   entityId?: EntityId
   entityType?: NotificationEntityType
   actionHref?: string
-  /** Delivery channel for simulated multi-tenant inbox (frontend-only MVP). */
   audience?: NotificationAudience
+  metadata?: {
+    bookingId?: EntityId
+    tournamentId?: EntityId
+    playgroundId?: EntityId
+    paymentDeadline?: string
+  }
 }
 
-export type NotificationInput = Omit<AppNotification, "id" | "createdAt" | "isRead">
-
 export type NotificationSettingKey = "booking" | "tournament" | "owner" | "system"
+
+export type NotificationInput = Omit<
+  AppNotification,
+  "id" | "createdAt" | "isRead"
+> & {
+  audience?: NotificationAudience
+}

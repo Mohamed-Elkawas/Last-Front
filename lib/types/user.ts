@@ -10,7 +10,10 @@ export type UserProfile = {
   position: string
   points: number
   avatarUrl?: string | null
-}
 
-/** Persisted client profile until auth API exists (subset may be filled by backend later). */
+  age?: number
+  gender?: string
+  address?: string
+  joinedAt?: string
+}
 export type UserProfileDraft = Omit<UserProfile, "id"> & { id?: EntityId }

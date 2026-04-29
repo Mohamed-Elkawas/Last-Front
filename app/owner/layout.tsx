@@ -12,6 +12,8 @@ import { useAuth } from "@/hooks/use-auth"
 import { devSimulateAdminApproveOwner } from "@/lib/services/owner.service"
 import { AUTH_ROUTES } from "@/lib/auth/routes"
 
+
+
 export default function OwnerLayout({ children }: { children: React.ReactNode }) {
   const { applicationStatus, rejectionMessage, isReady } = useOwnerAccess()
   const { isAuthenticated, accountType, hasHydrated: authReady } = useAuth()
@@ -28,7 +30,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     )
   }
 
-  if (!isAuthenticated || accountType !== "owner") {
+  if (!isAuthenticated) {
     return (
       <AppShell>
         <div className="mx-auto max-w-lg px-6 py-16 text-center text-muted-foreground">
@@ -42,6 +44,16 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           accountType="owner"
           signUpHref={AUTH_ROUTES.ownerRegister}
         />
+      </AppShell>
+    )
+  }
+
+  if (accountType !== "owner") {
+    return (
+      <AppShell>
+        <div className="mx-auto max-w-lg px-6 py-16 text-center text-muted-foreground">
+          غير مسموح لهذا الحساب بالدخول إلى لوحة المالك.
+        </div>
       </AppShell>
     )
   }

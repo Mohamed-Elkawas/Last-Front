@@ -14,7 +14,7 @@ interface AppShellProps {
 
 const OWNER_HOME = "/owner/dashboard"
 
-const PUBLIC_SAFE_ROUTES = ["/", "/auth"]
+const PUBLIC_SAFE_ROUTES = ["/auth"]
 
 function isPublicSafeRoute(pathname: string) {
   return PUBLIC_SAFE_ROUTES.some((route) => pathname === route || pathname.startsWith(`${route}/`))
@@ -37,14 +37,11 @@ export function AppShell({ children, showNavbar = true }: AppShellProps) {
   useEffect(() => {
     if (!hasHydrated) return
 
-    if (isOwner && !isOwnerRoute && !isPublicSafeRoute(pathname)) {
+    if (isOwner && !isOwnerRoute) {
       router.replace(OWNER_HOME)
     }
-  }, [accountType, hasHydrated, isOwner, isOwnerRoute, pathname, router])
+  }, [hasHydrated, isOwner, isOwnerRoute, router])
 
-  if (hasHydrated && isOwner && !isOwnerRoute && !isPublicSafeRoute(pathname)) {
-    return null
-  }
 
   return (
     <div dir={dir} className="min-h-screen bg-background">

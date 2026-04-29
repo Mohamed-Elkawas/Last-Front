@@ -23,7 +23,11 @@ export const bookingsPersistenceRepository = {
     return useBookingStore.getState().createTournamentBooking(input)
   },
 
-  submitPayment(bookingId: string, proof: PaymentProof, options?: { moveToAwaitingAdmin?: boolean }): void {
+  submitPayment(
+    bookingId: string,
+    proof: PaymentProof,
+    options?: { moveToAwaitingAdmin?: boolean },
+  ): void {
     useBookingStore.getState().submitPayment(bookingId, proof, options)
   },
 

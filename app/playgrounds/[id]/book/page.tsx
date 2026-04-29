@@ -5,7 +5,18 @@ import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useParams, useRouter } from "next/navigation"
-import { ArrowLeft, MapPin, Star, Calendar, Clock, User, Phone, Check, CreditCard, Wallet } from "lucide-react"
+import {
+  ArrowLeft,
+  MapPin,
+  Star,
+  Calendar,
+  Clock,
+  User,
+  Phone,
+  Check,
+  CreditCard,
+  Wallet,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group"
@@ -14,7 +25,7 @@ import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { AppShell } from "@/components/layout/app-shell"
 import { AuthRequiredDialog } from "@/components/auth/auth-required-dialog"
-import { format, addDays, parse } from "date-fns"
+import { format, addDays } from "date-fns"
 import { useTranslate } from "@/hooks/use-translate"
 import { getDateFnsLocale } from "@/lib/i18n/date-locale"
 import { usePlayground } from "@/hooks/use-playgrounds"
@@ -28,104 +39,138 @@ import type { PaymentMethod } from "@/lib/types/booking"
 type PlaygroundBookingDraft = {
   step: number
   selectedDate: string | null
-  selectedSlots: string[]
+  selectedSlotKeys: string[]
   applyPoints: boolean
   paymentMethod: PaymentMethod
 }
 
 const DEFAULT_PLAYGROUND_PAYMENT_METHOD: PaymentMethod = "vodafone"
 
+const BLOCKING_STATUSES = [
+  "pending_payment",
+  "payment_submitted",
+  "awaiting_admin_approval",
+  "confirmed",
+]
+
 function isPaymentMethod(value: string): value is PaymentMethod {
   return value === "vodafone" || value === "instapay"
 }
 
-function toSlotLabel(time: string) {
-  return format(parse(time, "HH:mm", new Date()), "HH:mm")
-}
-
 export default function BookingPage() {
   const params = useParams()
-  const id = typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : undefined
+  const id =
+    typeof params.id === "string"
+      ? params.id
+      : Array.isArray(params.id)
+        ? params.id[0]
+        : undefined
+
   const router = useRouter()
   const { user } = useAuth()
   const { balance: pointsBalance, hasHydrated: pointsHydrated } = usePoints()
   const { t, language } = useTranslate()
   const { playground, loading: playgroundLoading } = usePlayground(id)
-  const { slots: slotDefs, loading: slotsLoading } = usePlaygroundBookingSlotDefinitions()
+  const { slots: slotDefs, loading: slotsLoading } =
+    usePlaygroundBookingSlotDefinitions()
   const dateLocale = useMemo(() => getDateFnsLocale(language), [language])
   const { isAuthenticated, canProceed } = useRequireAuth()
+  const rawBookings = useBookingStore((s) => s.bookings)
+
   const draftStorageKey = id ? `playground-booking-draft:${id}` : null
 
-  // Guard: Redirect unauthenticated guests to sign in
   const [showAuthDialog, setShowAuthDialog] = useState(() => !isAuthenticated)
   const [step, setStep] = useState(1)
   const [selectedDate, setSelectedDate] = useState<Date | null>(null)
-  const [selectedSlotTimes, setSelectedSlotTimes] = useState<string[]>([])
+  const [selectedSlotKeys, setSelectedSlotKeys] = useState<string[]>([])
   const [applyPoints, setApplyPoints] = useState(false)
-  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(DEFAULT_PLAYGROUND_PAYMENT_METHOD)
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>(
+    DEFAULT_PLAYGROUND_PAYMENT_METHOD,
+  )
 
   const dateCards = useMemo(() => {
-    const dates = []
     const today = new Date()
-    for (let i = 0; i < 14; i++) {
-      dates.push(addDays(today, i))
-    }
-    return dates
+    return Array.from({ length: 14 }, (_, index) => addDays(today, index))
   }, [])
-const rawBookings = useBookingStore((s) => s.bookings)
 
-const selectedDateKey = selectedDate
-  ? selectedDate.toISOString().slice(0, 10)
-  : ""
+  const selectedDateKey = selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""
 
-// helper يفصل الأوقات من النص زي "10:00 - 11:00"
-function extractTimes(slotText: string): string[] {
-  return slotText.match(/\b\d{2}:\d{2}\b/g) ?? []
-}
+  const timeSlots = useMemo(() => {
+    return slotDefs.map((slot) => {
+      const slotKey = `${id ?? ""}_${selectedDateKey}_${slot.startTime}_${slot.endTime}`
 
-const timeSlots = useMemo(
-  () =>
-    slotDefs.map((slot) => {
-          const isSlotBlocked = rawBookings.some((booking) => {
-          const bookedSlots = booking.playground?.slots ?? ""
+      const isBlocked = rawBookings.some((booking) => {
+        if (booking.kind !== "playground") return false
+        if (booking.playground?.id !== String(id)) return false
+        if (booking.playground?.date !== selectedDateKey) return false
 
-        return (
-          booking.kind === "playground" &&
-          booking.playground?.id === String(id) &&
-          booking.playground?.date === selectedDateKey &&
-          extractTimes(bookedSlots).includes(slot.time) &&
-        ["pending_payment", "payment_submitted", "awaiting_admin_approval", "confirmed"].includes(
-        booking.status
-)        )
+        const isExpired =
+          booking.status === "pending_payment" &&
+          Date.now() > booking.expiresAt
+
+        if (isExpired) return false
+        if (!BLOCKING_STATUSES.includes(booking.status)) return false
+
+        return booking.playground?.slotKeys?.includes(slotKey)
       })
 
       return {
         ...slot,
-        label: toSlotLabel(slot.time),
+        slotKey,
+        label: `${slot.startTime} - ${slot.endTime}`,
+        available: !isBlocked,
+      }
+    })
+  }, [slotDefs, rawBookings, id, selectedDateKey])
 
-      
-available: !isSlotBlocked,      }
-    }),
-  [slotDefs, rawBookings, id, selectedDateKey],
-)
+  const availableSlotKeys = useMemo(
+    () =>
+      new Set(
+        timeSlots.filter((slot) => slot.available).map((slot) => slot.slotKey),
+      ),
+    [timeSlots],
+  )
 
-  const availableSlotTimes = useMemo(() => new Set(timeSlots.map((slot) => slot.time)), [timeSlots])
-  const hourlyRate = playground?.price.min ?? 0
   const selectedSlots = useMemo(
-    () => [...new Set(selectedSlotTimes)].filter((slot) => availableSlotTimes.has(slot)).sort(),
-    [availableSlotTimes, selectedSlotTimes],
-  )
-  const selectedSlotLabels = useMemo(
-    () => selectedSlots.map((slotTime) => timeSlots.find((slot) => slot.time === slotTime)?.label ?? slotTime),
-    [selectedSlots, timeSlots],
+    () =>
+      timeSlots.filter(
+        (slot) =>
+          selectedSlotKeys.includes(slot.slotKey) &&
+          availableSlotKeys.has(slot.slotKey),
+      ),
+    [availableSlotKeys, selectedSlotKeys, timeSlots],
   )
 
-  const toggleSlot = (time: string) => {
-    const slot = timeSlots.find((s) => s.time === time)
+  const selectedSlotLabels = useMemo(
+    () => selectedSlots.map((slot) => slot.label),
+    [selectedSlots],
+  )
+
+  const hourlyRate = playground?.price.min ?? 0
+  const totalHours = selectedSlots.length
+  const subtotal = totalHours * hourlyRate
+  const pointsDiscount = applyPoints ? Math.min(pointsBalance, subtotal * 0.2) : 0
+  const total = subtotal - pointsDiscount
+
+  const formattedDate = selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""
+  const formattedDateLabel = selectedDate
+    ? format(selectedDate, "EEEE, d MMMM yyyy", { locale: dateLocale })
+    : ""
+
+  const hasSelectedDate = Boolean(selectedDate && formattedDate)
+  const hasSelectedSlots = selectedSlots.length > 0
+  const hasValidSubtotal = Number.isFinite(subtotal) && subtotal > 0
+  const hasValidTotal = Number.isFinite(total) && total > 0
+  const hasValidPaymentMethod = isPaymentMethod(paymentMethod)
+
+  const toggleSlot = (slotKey: string) => {
+    const slot = timeSlots.find((item) => item.slotKey === slotKey)
     if (!slot?.available) return
 
-    setSelectedSlotTimes((prev) =>
-      prev.includes(time) ? prev.filter((x) => x !== time) : [...prev, time]
+    setSelectedSlotKeys((prev) =>
+      prev.includes(slotKey)
+        ? prev.filter((item) => item !== slotKey)
+        : [...prev, slotKey],
     )
   }
 
@@ -136,22 +181,39 @@ available: !isSlotBlocked,      }
     if (!rawDraft) return
 
     try {
-      const draft = JSON.parse(rawDraft) as Partial<PlaygroundBookingDraft>
+      const draft = JSON.parse(rawDraft) as Partial<PlaygroundBookingDraft> & {
+        selectedSlots?: string[]
+      }
+
       const restoredDate = draft.selectedDate ? new Date(draft.selectedDate) : null
-      const restoredSlots = Array.isArray(draft.selectedSlots)
-        ? draft.selectedSlots.filter((slot): slot is string => typeof slot === "string")
-        : []
-      const paymentMethodFromDraft = draft.paymentMethod
-      const restoredPaymentMethod: PaymentMethod =
-        typeof paymentMethodFromDraft === "string" && isPaymentMethod(paymentMethodFromDraft)
-          ? paymentMethodFromDraft
+      const restoredSlotKeys = Array.isArray(draft.selectedSlotKeys)
+        ? draft.selectedSlotKeys.filter(
+            (slotKey): slotKey is string => typeof slotKey === "string",
+          )
+        : Array.isArray(draft.selectedSlots)
+          ? draft.selectedSlots.filter(
+              (slotKey): slotKey is string => typeof slotKey === "string",
+            )
+          : []
+
+      const restoredPaymentMethod =
+        typeof draft.paymentMethod === "string" && isPaymentMethod(draft.paymentMethod)
+          ? draft.paymentMethod
           : DEFAULT_PLAYGROUND_PAYMENT_METHOD
 
-      setSelectedDate(restoredDate && !Number.isNaN(restoredDate.getTime()) ? restoredDate : null)
-      setSelectedSlotTimes(restoredSlots)
+      setSelectedDate(
+        restoredDate && !Number.isNaN(restoredDate.getTime())
+          ? restoredDate
+          : null,
+      )
+      setSelectedSlotKeys(restoredSlotKeys)
       setApplyPoints(Boolean(draft.applyPoints))
       setPaymentMethod(restoredPaymentMethod)
-      setStep(typeof draft.step === "number" && draft.step >= 1 && draft.step <= 4 ? draft.step : 1)
+      setStep(
+        typeof draft.step === "number" && draft.step >= 1 && draft.step <= 4
+          ? draft.step
+          : 1,
+      )
     } catch {
       window.localStorage.removeItem(draftStorageKey)
     }
@@ -165,8 +227,10 @@ available: !isSlotBlocked,      }
   }, [canProceed, id, isAuthenticated])
 
   useEffect(() => {
-    setSelectedSlotTimes((prev) => prev.filter((slot) => availableSlotTimes.has(slot)))
-  }, [availableSlotTimes])
+    setSelectedSlotKeys((prev) =>
+      prev.filter((slotKey) => availableSlotKeys.has(slotKey)),
+    )
+  }, [availableSlotKeys])
 
   useEffect(() => {
     if (!draftStorageKey || typeof window === "undefined") return
@@ -174,28 +238,20 @@ available: !isSlotBlocked,      }
     const draft: PlaygroundBookingDraft = {
       step,
       selectedDate: selectedDate ? selectedDate.toISOString() : null,
-      selectedSlots,
+      selectedSlotKeys,
       applyPoints,
       paymentMethod,
     }
 
     window.localStorage.setItem(draftStorageKey, JSON.stringify(draft))
-  }, [applyPoints, draftStorageKey, paymentMethod, selectedDate, selectedSlots, step])
-
-  const totalHours = selectedSlots.length
-  const subtotal = totalHours * hourlyRate
-  const pointsDiscount = applyPoints ? Math.min(pointsBalance, subtotal * 0.2) : 0
-  const total = subtotal - pointsDiscount
-
-  const formattedDate = selectedDate ? format(selectedDate, "yyyy-MM-dd") : ""
-  const formattedDateLabel = selectedDate
-    ? format(selectedDate, "EEEE, d MMMM yyyy", { locale: dateLocale })
-    : ""
-  const hasSelectedDate = Boolean(selectedDate && formattedDate)
-  const hasSelectedSlots = selectedSlots.length > 0
-  const hasValidSubtotal = Number.isFinite(subtotal) && subtotal > 0
-  const hasValidTotal = Number.isFinite(total) && total > 0
-  const hasValidPaymentMethod = isPaymentMethod(paymentMethod)
+  }, [
+    applyPoints,
+    draftStorageKey,
+    paymentMethod,
+    selectedDate,
+    selectedSlotKeys,
+    step,
+  ])
 
   useEffect(() => {
     if (step > 1 && !hasSelectedDate) {
@@ -211,10 +267,23 @@ available: !isSlotBlocked,      }
     if (step > 3 && (!hasValidSubtotal || !hasValidPaymentMethod)) {
       setStep(3)
     }
-  }, [hasSelectedDate, hasSelectedSlots, hasValidPaymentMethod, hasValidSubtotal, step])
+  }, [
+    hasSelectedDate,
+    hasSelectedSlots,
+    hasValidPaymentMethod,
+    hasValidSubtotal,
+    step,
+  ])
 
   const handleContinueToPayment = () => {
-    if (!playground || !id || !hasSelectedDate || !hasSelectedSlots || !hasValidTotal || !hasValidPaymentMethod) {
+    if (
+      !playground ||
+      !id ||
+      !hasSelectedDate ||
+      !hasSelectedSlots ||
+      !hasValidTotal ||
+      !hasValidPaymentMethod
+    ) {
       if (!hasSelectedDate) {
         setStep(1)
       } else if (!hasSelectedSlots) {
@@ -222,24 +291,36 @@ available: !isSlotBlocked,      }
       } else {
         setStep(4)
       }
+
       return
     }
 
-    // Guard: Check authentication
     if (!canProceed("playground_book", { playgroundId: id })) {
       setShowAuthDialog(true)
       return
     }
 
-    const slots = selectedSlotLabels.join(", ")
+    if (!user.fullName || !user.phoneNumber) {
+      return
+    }
+
+    const ownerId =
+      "ownerId" in playground && playground.ownerId
+        ? String(playground.ownerId)
+        : undefined
 
     const bookingId = createPlaygroundBooking({
       playgroundId: playground.id,
+      ownerId,
       playgroundName: playground.name,
       playgroundLocation: playground.location,
       date: formattedDate,
       dateLabel: formattedDateLabel,
-      slots,
+      slots: selectedSlots.map((slot) => ({
+        startTime: slot.startTime,
+        endTime: slot.endTime,
+        slotKey: slot.slotKey,
+      })),
       hours: totalHours,
       subtotal,
       pointsDiscount,
@@ -247,6 +328,7 @@ available: !isSlotBlocked,      }
       paymentMethod,
       playerDisplayName: user.fullName,
       playerPhone: user.phoneNumber,
+      playerEmail: user.email,
     })
 
     if (draftStorageKey && typeof window !== "undefined") {
@@ -260,7 +342,9 @@ available: !isSlotBlocked,      }
     return (
       <AppShell>
         <div className="mx-auto max-w-5xl px-6 py-8">
-          <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+          <p className="text-sm text-muted-foreground">
+            {t("common.loading")}
+          </p>
         </div>
       </AppShell>
     )
@@ -279,26 +363,42 @@ available: !isSlotBlocked,      }
         <div className="grid gap-8 lg:grid-cols-3">
           <div className="space-y-6 lg:col-span-2">
             <div className="flex items-center gap-2 sm:gap-4">
-              {[1, 2, 3, 4].map((s) => (
-                <div key={s} className="flex items-center gap-2">
+              {[1, 2, 3, 4].map((currentStep) => (
+                <div key={currentStep} className="flex items-center gap-2">
                   <div
                     className={`flex h-10 w-10 items-center justify-center rounded-full text-sm font-semibold transition-colors ${
-                      step >= s ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                      step >= currentStep
+                        ? "bg-primary text-primary-foreground"
+                        : "bg-muted text-muted-foreground"
                     }`}
                   >
-                    {step > s ? <Check className="h-5 w-5" /> : s}
+                    {step > currentStep ? (
+                      <Check className="h-5 w-5" />
+                    ) : (
+                      currentStep
+                    )}
                   </div>
+
                   <span
                     className={`hidden text-sm font-medium sm:inline ${
-                      step >= s ? "text-foreground" : "text-muted-foreground"
+                      step >= currentStep
+                        ? "text-foreground"
+                        : "text-muted-foreground"
                     }`}
                   >
-                    {s === 1 && t("playgroundBook.stepDate")}
-                    {s === 2 && t("playgroundBook.stepTime")}
-                    {s === 3 && t("playgroundBook.stepReview")}
-                    {s === 4 && t("playgroundBook.stepPayment")}
+                    {currentStep === 1 && t("playgroundBook.stepDate")}
+                    {currentStep === 2 && t("playgroundBook.stepTime")}
+                    {currentStep === 3 && t("playgroundBook.stepReview")}
+                    {currentStep === 4 && t("playgroundBook.stepPayment")}
                   </span>
-                  {s < 4 && <div className={`h-0.5 w-6 sm:w-12 ${step > s ? "bg-primary" : "bg-muted"}`} />}
+
+                  {currentStep < 4 && (
+                    <div
+                      className={`h-0.5 w-6 sm:w-12 ${
+                        step > currentStep ? "bg-primary" : "bg-muted"
+                      }`}
+                    />
+                  )}
                 </div>
               ))}
             </div>
@@ -311,13 +411,20 @@ available: !isSlotBlocked,      }
                     {t("playgroundBook.selectDateTitle")}
                   </CardTitle>
                 </CardHeader>
+
                 <CardContent className="space-y-6">
                   {selectedDate && (
                     <div className="rounded-xl bg-accent/50 p-6 text-center">
-                      <p className="text-sm font-medium text-muted-foreground">{t("common.selectedDate")}</p>
-                      <p className="mt-1 text-3xl font-bold text-foreground">
-                        {format(selectedDate, "d MMMM yyyy", { locale: dateLocale })}
+                      <p className="text-sm font-medium text-muted-foreground">
+                        {t("common.selectedDate")}
                       </p>
+
+                      <p className="mt-1 text-3xl font-bold text-foreground">
+                        {format(selectedDate, "d MMMM yyyy", {
+                          locale: dateLocale,
+                        })}
+                      </p>
+
                       <p className="mt-1 text-lg text-muted-foreground">
                         {format(selectedDate, "EEEE", { locale: dateLocale })}
                       </p>
@@ -328,14 +435,18 @@ available: !isSlotBlocked,      }
                     {dateCards.map((date, index) => {
                       const isSelected =
                         selectedDate &&
-                        format(selectedDate, "yyyy-MM-dd") === format(date, "yyyy-MM-dd")
+                        format(selectedDate, "yyyy-MM-dd") ===
+                          format(date, "yyyy-MM-dd")
                       const isToday = index === 0
 
                       return (
                         <button
-                          key={index}
+                          key={format(date, "yyyy-MM-dd")}
                           type="button"
-                          onClick={() => setSelectedDate(date)}
+                          onClick={() => {
+                            setSelectedDate(date)
+                            setSelectedSlotKeys([])
+                          }}
                           className={`flex flex-col items-center rounded-xl border-2 p-4 transition-all ${
                             isSelected
                               ? "border-primary bg-primary text-primary-foreground shadow-lg"
@@ -344,23 +455,39 @@ available: !isSlotBlocked,      }
                         >
                           <span
                             className={`text-xs font-medium uppercase ${
-                              isSelected ? "text-primary-foreground/80" : "text-muted-foreground"
+                              isSelected
+                                ? "text-primary-foreground/80"
+                                : "text-muted-foreground"
                             }`}
                           >
                             {format(date, "EEE", { locale: dateLocale })}
                           </span>
+
                           <span
-                            className={`text-2xl font-bold ${isSelected ? "text-primary-foreground" : "text-foreground"}`}
+                            className={`text-2xl font-bold ${
+                              isSelected
+                                ? "text-primary-foreground"
+                                : "text-foreground"
+                            }`}
                           >
                             {format(date, "d", { locale: dateLocale })}
                           </span>
+
                           <span
-                            className={`text-xs ${isSelected ? "text-primary-foreground/80" : "text-muted-foreground"}`}
+                            className={`text-xs ${
+                              isSelected
+                                ? "text-primary-foreground/80"
+                                : "text-muted-foreground"
+                            }`}
                           >
                             {format(date, "MMM", { locale: dateLocale })}
                           </span>
+
                           {isToday && (
-                            <Badge variant={isSelected ? "secondary" : "default"} className="mt-2 px-1.5 py-0 text-[10px]">
+                            <Badge
+                              variant={isSelected ? "secondary" : "default"}
+                              className="mt-2 px-1.5 py-0 text-[10px]"
+                            >
                               {t("common.today")}
                             </Badge>
                           )}
@@ -369,7 +496,12 @@ available: !isSlotBlocked,      }
                     })}
                   </div>
 
-                  <Button className="w-full" size="lg" disabled={!selectedDate} onClick={() => setStep(2)}>
+                  <Button
+                    className="w-full"
+                    size="lg"
+                    disabled={!selectedDate}
+                    onClick={() => setStep(2)}
+                  >
                     {t("common.continue")}
                   </Button>
                 </CardContent>
@@ -383,21 +515,31 @@ available: !isSlotBlocked,      }
                     <Clock className="h-5 w-5 text-primary" />
                     {t("playgroundBook.selectTimeTitle")}
                   </CardTitle>
+
                   <p className="text-sm text-muted-foreground">
-                    {selectedDate && format(selectedDate, "EEEE, d MMMM yyyy", { locale: dateLocale })}
+                    {selectedDate &&
+                      format(selectedDate, "EEEE, d MMMM yyyy", {
+                        locale: dateLocale,
+                      })}
                   </p>
-                  <p className="text-sm text-muted-foreground">{t("playgroundBook.selectTimeHint")}</p>
+
+                  <p className="text-sm text-muted-foreground">
+                    {t("playgroundBook.selectTimeHint")}
+                  </p>
                 </CardHeader>
+
                 <CardContent className="space-y-6">
                   <div className="flex flex-wrap items-center justify-center gap-6 text-sm">
                     <div className="flex items-center gap-2">
                       <div className="h-4 w-4 rounded bg-primary" />
                       <span>{t("playgroundBook.legendSelected")}</span>
                     </div>
+
                     <div className="flex items-center gap-2">
                       <div className="h-4 w-4 rounded border-2 border-primary bg-white dark:bg-background" />
                       <span>{t("playgroundBook.legendAvailable")}</span>
                     </div>
+
                     <div className="flex items-center gap-2">
                       <div className="h-4 w-4 rounded bg-destructive/20" />
                       <span>{t("playgroundBook.legendBooked")}</span>
@@ -407,12 +549,12 @@ available: !isSlotBlocked,      }
                   <div className="grid grid-cols-3 gap-3 sm:grid-cols-5">
                     {timeSlots.map((slot) => (
                       <button
-                        key={slot.time}
+                        key={slot.slotKey}
                         type="button"
-                        onClick={() => toggleSlot(slot.time)}
+                        onClick={() => toggleSlot(slot.slotKey)}
                         disabled={!slot.available}
                         className={`rounded-xl border-2 px-3 py-4 text-sm font-medium transition-all ${
-                          selectedSlots.includes(slot.time)
+                          selectedSlotKeys.includes(slot.slotKey)
                             ? "border-primary bg-primary text-primary-foreground shadow-md"
                             : slot.available
                               ? "border-border bg-card hover:border-primary hover:bg-accent"
@@ -426,22 +568,34 @@ available: !isSlotBlocked,      }
 
                   {selectedSlots.length > 0 && (
                     <div className="rounded-xl bg-accent/50 p-4 text-center">
-                      <p className="text-sm text-muted-foreground">{t("playgroundBook.selectedTime")}</p>
-                      <p className="mt-1 text-lg font-semibold text-foreground">{selectedSlotLabels.join(", ")}</p>
+                      <p className="text-sm text-muted-foreground">
+                        {t("playgroundBook.selectedTime")}
+                      </p>
+
+                      <p className="mt-1 text-lg font-semibold text-foreground">
+                        {selectedSlotLabels.join(", ")}
+                      </p>
                     </div>
                   )}
 
                   <div className="flex gap-4">
-                    <Button variant="outline" size="lg" onClick={() => setStep(1)}>
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      onClick={() => setStep(1)}
+                    >
                       {t("common.back")}
                     </Button>
+
                     <Button
                       className="flex-1"
                       size="lg"
                       disabled={selectedSlots.length === 0}
                       onClick={() => setStep(3)}
                     >
-                      {t("playgroundBook.continueHours", { count: selectedSlots.length })}
+                      {t("playgroundBook.continueHours", {
+                        count: selectedSlots.length,
+                      })}
                     </Button>
                   </div>
                 </CardContent>
@@ -456,35 +610,60 @@ available: !isSlotBlocked,      }
                     {t("playgroundBook.reviewTitle")}
                   </CardTitle>
                 </CardHeader>
+
                 <CardContent className="space-y-6">
                   <div className="rounded-xl bg-muted/50 p-5">
-                    <h4 className="font-semibold text-foreground">{t("playgroundBook.yourInfo")}</h4>
+                    <h4 className="font-semibold text-foreground">
+                      {t("playgroundBook.yourInfo")}
+                    </h4>
+
                     <div className="mt-4 grid gap-3">
                       <div className="flex flex-wrap items-center gap-3">
                         <User className="h-5 w-5 shrink-0 text-muted-foreground" />
-                        <span className="text-muted-foreground">{t("playgroundBook.nameLabel")}:</span>
-                        <span className="font-medium text-foreground">{user.fullName}</span>
+                        <span className="text-muted-foreground">
+                          {t("playgroundBook.nameLabel")}:
+                        </span>
+                        <span className="font-medium text-foreground">
+                          {user.fullName || "-"}
+                        </span>
                       </div>
+
                       <div className="flex flex-wrap items-center gap-3">
                         <Phone className="h-5 w-5 shrink-0 text-muted-foreground" />
-                        <span className="text-muted-foreground">{t("playgroundBook.phoneLabel")}:</span>
-                        <span className="font-medium text-foreground">{user.phoneNumber}</span>
+                        <span className="text-muted-foreground">
+                          {t("playgroundBook.phoneLabel")}:
+                        </span>
+                        <span className="font-medium text-foreground">
+                          {user.phoneNumber || "-"}
+                        </span>
                       </div>
                     </div>
                   </div>
 
                   <div className="rounded-xl bg-muted/50 p-5">
-                    <h4 className="font-semibold text-foreground">{t("playgroundBook.bookingDetails")}</h4>
+                    <h4 className="font-semibold text-foreground">
+                      {t("playgroundBook.bookingDetails")}
+                    </h4>
+
                     <div className="mt-4 grid gap-3">
                       <div className="flex flex-wrap items-center gap-3">
                         <Calendar className="h-5 w-5 shrink-0 text-muted-foreground" />
-                        <span className="text-muted-foreground">{t("playgroundBook.dateLabel")}:</span>
-                        <span className="font-medium text-foreground">{formattedDateLabel}</span>
+                        <span className="text-muted-foreground">
+                          {t("playgroundBook.dateLabel")}:
+                        </span>
+                        <span className="font-medium text-foreground">
+                          {formattedDateLabel}
+                        </span>
                       </div>
+
                       <div className="flex flex-wrap items-center gap-3">
                         <Clock className="h-5 w-5 shrink-0 text-muted-foreground" />
-                        <span className="text-muted-foreground">{t("playgroundBook.timeLabel")}:</span>
-                        <span className="font-medium text-foreground">{selectedSlotLabels.join(", ") || "-"}</span>
+                        <span className="text-muted-foreground">
+                          {t("playgroundBook.timeLabel")}:
+                        </span>
+                        <span className="font-medium text-foreground">
+                          {selectedSlotLabels.join(", ") || "-"}
+                        </span>
                       </div>
                     </div>
                   </div>
@@ -493,15 +672,24 @@ available: !isSlotBlocked,      }
                     <Checkbox
                       id="use-points"
                       checked={applyPoints}
-                      onCheckedChange={(checked) => setApplyPoints(checked as boolean)}
+                      onCheckedChange={(checked) =>
+                        setApplyPoints(Boolean(checked))
+                      }
                       className="h-5 w-5"
                     />
+
                     <Label htmlFor="use-points" className="flex-1 cursor-pointer">
-                      <div className="font-semibold text-foreground">{t("playgroundBook.usePointsTitle")}</div>
+                      <div className="font-semibold text-foreground">
+                        {t("playgroundBook.usePointsTitle")}
+                      </div>
+
                       <div className="text-sm text-muted-foreground">
-                        {t("playgroundBook.usePointsDesc", { points: pointsBalance.toLocaleString() })}
+                        {t("playgroundBook.usePointsDesc", {
+                          points: pointsBalance.toLocaleString(),
+                        })}
                       </div>
                     </Label>
+
                     {applyPoints && (
                       <Badge variant="default" className="bg-primary text-base">
                         -{pointsDiscount} {t("common.egp")}
@@ -510,9 +698,14 @@ available: !isSlotBlocked,      }
                   </div>
 
                   <div className="flex gap-4">
-                    <Button variant="outline" size="lg" onClick={() => setStep(2)}>
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      onClick={() => setStep(2)}
+                    >
                       {t("common.back")}
                     </Button>
+
                     <Button
                       className="flex-1"
                       size="lg"
@@ -534,6 +727,7 @@ available: !isSlotBlocked,      }
                     {t("playgroundBook.paymentTitle")}
                   </CardTitle>
                 </CardHeader>
+
                 <CardContent className="space-y-6">
                   <RadioGroup
                     value={paymentMethod}
@@ -545,7 +739,12 @@ available: !isSlotBlocked,      }
                     className="space-y-4"
                   >
                     <div>
-                      <RadioGroupItem value="vodafone" id="vodafone" className="peer sr-only" />
+                      <RadioGroupItem
+                        value="vodafone"
+                        id="vodafone"
+                        className="peer sr-only"
+                      />
+
                       <Label
                         htmlFor="vodafone"
                         className="flex cursor-pointer items-center gap-4 rounded-xl border-2 p-5 transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-accent/50"
@@ -553,15 +752,26 @@ available: !isSlotBlocked,      }
                         <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-red-500">
                           <Wallet className="h-7 w-7 text-white" />
                         </div>
+
                         <div>
-                          <p className="text-lg font-semibold text-foreground">{t("playgroundBook.vodafoneTitle")}</p>
-                          <p className="text-sm text-muted-foreground">{t("playgroundBook.vodafoneDesc")}</p>
+                          <p className="text-lg font-semibold text-foreground">
+                            {t("playgroundBook.vodafoneTitle")}
+                          </p>
+
+                          <p className="text-sm text-muted-foreground">
+                            {t("playgroundBook.vodafoneDesc")}
+                          </p>
                         </div>
                       </Label>
                     </div>
 
                     <div>
-                      <RadioGroupItem value="instapay" id="instapay" className="peer sr-only" />
+                      <RadioGroupItem
+                        value="instapay"
+                        id="instapay"
+                        className="peer sr-only"
+                      />
+
                       <Label
                         htmlFor="instapay"
                         className="flex cursor-pointer items-center gap-4 rounded-xl border-2 p-5 transition-all peer-data-[state=checked]:border-primary peer-data-[state=checked]:bg-accent/50"
@@ -569,22 +779,38 @@ available: !isSlotBlocked,      }
                         <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-blue-500">
                           <CreditCard className="h-7 w-7 text-white" />
                         </div>
+
                         <div>
-                          <p className="text-lg font-semibold text-foreground">{t("playgroundBook.instapayTitle")}</p>
-                          <p className="text-sm text-muted-foreground">{t("playgroundBook.instapayDesc")}</p>
+                          <p className="text-lg font-semibold text-foreground">
+                            {t("playgroundBook.instapayTitle")}
+                          </p>
+
+                          <p className="text-sm text-muted-foreground">
+                            {t("playgroundBook.instapayDesc")}
+                          </p>
                         </div>
                       </Label>
                     </div>
                   </RadioGroup>
 
                   <div className="flex gap-4">
-                    <Button variant="outline" size="lg" onClick={() => setStep(3)}>
+                    <Button
+                      variant="outline"
+                      size="lg"
+                      onClick={() => setStep(3)}
+                    >
                       {t("common.back")}
                     </Button>
+
                     <Button
                       className="flex-1"
                       size="lg"
-                      disabled={!selectedDate || selectedSlots.length === 0 || total <= 0 || !isPaymentMethod(paymentMethod)}
+                      disabled={
+                        !selectedDate ||
+                        selectedSlots.length === 0 ||
+                        total <= 0 ||
+                        !isPaymentMethod(paymentMethod)
+                      }
                       onClick={handleContinueToPayment}
                     >
                       {t("playgroundBook.continuePaymentDetails")}
@@ -599,44 +825,79 @@ available: !isSlotBlocked,      }
             <Card className="sticky top-24 bg-card">
               <CardContent className="p-0">
                 <div className="relative h-44 overflow-hidden rounded-t-xl">
-                  <Image src={playground.imageUrl} alt={playground.name[language]} fill className="object-cover" />
+                  <Image
+                    src={playground.imageUrl}
+                    alt={playground.name[language]}
+                    fill
+                    className="object-cover"
+                  />
                 </div>
+
                 <div className="p-5">
-                  <h3 className="text-lg font-bold text-foreground">{playground.name[language]}</h3>
+                  <h3 className="text-lg font-bold text-foreground">
+                    {playground.name[language]}
+                  </h3>
+
                   <div className="mt-2 flex items-center gap-1 text-sm text-muted-foreground">
                     <MapPin className="h-4 w-4 shrink-0" />
                     {playground.location[language]}
                   </div>
+
                   <div className="mt-2 flex items-center gap-1">
                     <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                    <span className="text-sm font-medium">{playground.rating}</span>
+                    <span className="text-sm font-medium">
+                      {playground.rating}
+                    </span>
                   </div>
 
                   <div className="mt-5 border-t pt-5">
                     <div className="flex items-center justify-between">
-                      <span className="text-muted-foreground">{t("playgroundBook.pricePerHour")}</span>
-                      <span className="font-medium">{hourlyRate} {t("common.egp")}</span>
+                      <span className="text-muted-foreground">
+                        {t("playgroundBook.pricePerHour")}
+                      </span>
+
+                      <span className="font-medium">
+                        {hourlyRate} {t("common.egp")}
+                      </span>
                     </div>
 
                     {selectedSlots.length > 0 && (
                       <>
                         <div className="mt-3 flex items-center justify-between">
-                          <span className="text-muted-foreground">{t("playgroundBook.hoursSelected")}</span>
+                          <span className="text-muted-foreground">
+                            {t("playgroundBook.hoursSelected")}
+                          </span>
+
                           <span className="font-medium">{totalHours}</span>
                         </div>
+
                         <div className="mt-3 flex items-center justify-between">
-                          <span className="text-muted-foreground">{t("common.subtotal")}</span>
-                          <span className="font-medium">{subtotal} {t("common.egp")}</span>
+                          <span className="text-muted-foreground">
+                            {t("common.subtotal")}
+                          </span>
+
+                          <span className="font-medium">
+                            {subtotal} {t("common.egp")}
+                          </span>
                         </div>
+
                         {applyPoints && pointsDiscount > 0 && (
                           <div className="mt-3 flex items-center justify-between text-primary">
                             <span>{t("playgroundBook.pointsDiscount")}</span>
-                            <span>-{pointsDiscount} {t("common.egp")}</span>
+                            <span>
+                              -{pointsDiscount} {t("common.egp")}
+                            </span>
                           </div>
                         )}
+
                         <div className="mt-4 flex items-center justify-between border-t pt-4">
-                          <span className="text-lg font-bold">{t("playgroundBook.total")}</span>
-                          <span className="text-2xl font-bold text-primary">{total} {t("common.egp")}</span>
+                          <span className="text-lg font-bold">
+                            {t("playgroundBook.total")}
+                          </span>
+
+                          <span className="text-2xl font-bold text-primary">
+                            {total} {t("common.egp")}
+                          </span>
                         </div>
                       </>
                     )}
@@ -647,8 +908,12 @@ available: !isSlotBlocked,      }
           </div>
         </div>
       </div>
-      
-      <AuthRequiredDialog open={showAuthDialog} onOpenChange={setShowAuthDialog} cancelHref="/" />
+
+      <AuthRequiredDialog
+        open={showAuthDialog}
+        onOpenChange={setShowAuthDialog}
+        cancelHref="/"
+      />
     </AppShell>
   )
 }

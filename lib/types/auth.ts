@@ -37,6 +37,12 @@ export type PlayerRegisterApiRequest = {
   email: string
   phone: string
   password: string
+
+  age?: number
+  gender?: string
+  address?: string
+  joinedAt?: string
+
   position?: string | null
   skillLevel: number
 }
@@ -48,9 +54,13 @@ export type OwnerRegisterApiRequest = {
   phone: string
   password: string
   username: string
+
+  age?: number
+  gender?: string
+
   playgroundAddress?: string | null
   photoUrl?: string | null
-  businessLicenseUrl?: string | null
+  businessLicenseUrl: string
 }
 
 export type VerifyOtpApiRequest = {

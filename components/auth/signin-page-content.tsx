@@ -69,7 +69,6 @@ export function SignInPageContent({ accountType }: SignInPageContentProps) {
               </div>
             )}
             <div className="mb-4 space-y-2">
-              <Label>{t("auth.accountTypeLabel")}</Label>
               <RadioGroup
                 value={accountType}
                 onValueChange={(value) => router.push(getSignInRoute(value as AuthAccountType))}

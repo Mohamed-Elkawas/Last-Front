@@ -14,11 +14,15 @@ export function repositoryListPlaygroundCatalogIds(): string[] {
   return DEMO_PLAYGROUNDS.map((p) => p.id)
 }
 
-export function repositoryCreatePlayground(playground: Omit<Playground, 'id'>): Playground {
+export function repositoryCreatePlayground(
+  playground: Omit<Playground, "id">,
+): Playground {
   const newPlayground: Playground = {
     ...playground,
     id: `pg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
   }
+
   DEMO_PLAYGROUNDS.push(newPlayground)
+
   return newPlayground
 }

@@ -1,56 +1,133 @@
 "use client"
 
-import { Suspense, useEffect, useMemo, useState } from "react"
+import { Suspense, useEffect, useState, type FormEvent } from "react"
 import Link from "next/link"
-import { useSearchParams, useParams, useRouter } from "next/navigation"
-import { ArrowLeft, CreditCard, Wallet, Upload, AlertCircle, Clock } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
+import {
+  ArrowLeft,
+  ArrowRight,
+  Calendar,
+  Clock,
+  CreditCard,
+  Loader2,
+  MapPin,
+  Phone,
+  ShieldCheck,
+  Upload,
+  User,
+  Wallet,
+} from "lucide-react"
+
 import { AppShell } from "@/components/layout/app-shell"
 import { AuthRequiredDialog } from "@/components/auth/auth-required-dialog"
-import { useTranslate } from "@/hooks/use-translate"
-import { useAuth } from "@/hooks/use-auth"
-import { useBookingById } from "@/hooks/use-booking-by-id"
-import { useRequireAuth } from "@/lib/auth/require-auth"
-import { submitBookingPayment, sweepBookingExpiry } from "@/lib/services/bookings.service"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 
-function TournamentPaymentContent() {
-  const { t, language } = useTranslate()
-  const searchParams = useSearchParams()
+import { useTranslate } from "@/hooks/use-translate"
+import { useRequireAuth } from "@/lib/auth/require-auth"
+import {
+  expireTournamentRegistration,
+  getTournamentRegistrationById,
+  submitTournamentPayment,
+} from "@/lib/services/tournaments.service"
+
+const copy = {
+  ar: {
+    back: "رجوع",
+    details: "التفاصيل",
+    payment: "الدفع",
+    summary: "ملخص الحجز",
+    completePayment: "استكمال الدفع",
+    remaining: "الوقت المتبقي:",
+    selectedMethod: "طريقة الدفع المختارة",
+    payerName: "اسم صاحب التحويل",
+    phone: "رقم الهاتف",
+    upload: "اضغط لرفع صورة إيصال الدفع",
+    uploadHint: "PNG / JPG / JPEG",
+    submit: "إرسال الدفع",
+    submitting: "جاري الإرسال...",
+    secured: "جميع بيانات الدفع مشفرة وآمنة",
+    tournament: "البطولة:",
+    team: "الفريق:",
+    players: "عدد اللاعبين:",
+    total: "الإجمالي:",
+    notFound: "لم يتم العثور على التسجيل",
+    expired: "انتهى وقت الدفع",
+    required: "من فضلك أكمل بيانات الدفع",
+    loading: "جاري التحميل...",
+  },
+  en: {
+    back: "Back",
+    details: "Details",
+    payment: "Payment",
+    summary: "Booking Summary",
+    completePayment: "Complete Payment",
+    remaining: "Time remaining:",
+    selectedMethod: "Selected payment method",
+    payerName: "Payer Name",
+    phone: "Phone Number",
+    upload: "Upload payment screenshot",
+    uploadHint: "PNG / JPG / JPEG",
+    submit: "Submit Payment",
+    submitting: "Submitting...",
+    secured: "All payment data is encrypted and secure",
+    tournament: "Tournament:",
+    team: "Team:",
+    players: "Players:",
+    total: "Total:",
+    notFound: "Registration not found",
+    expired: "Payment time expired",
+    required: "Please complete payment data",
+    loading: "Loading...",
+  },
+}
+
+function formatRemaining(ms: number) {
+  const safeMs = Math.max(ms, 0)
+  const minutes = Math.floor(safeMs / 1000 / 60)
+  const seconds = Math.floor((safeMs / 1000) % 60)
+
+  return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
+}
+
+function PaymentContent() {
+  const { language } = useTranslate()
+  const text = language === "ar" ? copy.ar : copy.en
+  const isArabic = language === "ar"
+
   const params = useParams()
   const router = useRouter()
-  const { user } = useAuth()
+  const searchParams = useSearchParams()
   const { isAuthenticated, canProceed } = useRequireAuth()
+
   const tournamentId =
-    typeof params.id === "string" ? params.id : Array.isArray(params.id) ? params.id[0] : undefined
+    typeof params.id === "string"
+      ? params.id
+      : Array.isArray(params.id)
+        ? params.id[0]
+        : undefined
 
-  const bookingId = searchParams.get("bookingId") || ""
-  const { booking, hasHydrated } = useBookingById(bookingId, "tournament", tournamentId)
-  const method = booking?.paymentMethod || "vodafone"
-  const teamName = booking?.tournament?.teamName || t("common.team")
-  const players = String(booking?.tournament?.players ?? 5)
-  const total = String(booking?.tournament?.total ?? 400)
-  const tournamentName = booking?.tournament?.name[language] || t("common.tournaments")
+  const registrationId = searchParams.get("registrationId") || ""
+  const method = searchParams.get("method") || "vodafone_cash"
 
-  const [isLoading, setIsLoading] = useState(false)
-  const [now, setNow] = useState(Date.now())
-  const [showAuthDialog, setShowAuthDialog] = useState(() => !isAuthenticated)
-  const [formData, setFormData] = useState({
-    payerName: user.fullName,
-    paymentNumber: user.phoneNumber,
-    transactionReference: "",
-    screenshotName: "",
+  const [registration, setRegistration] = useState<any>(null)
+  const [loading, setLoading] = useState(true)
+  const [submitting, setSubmitting] = useState(false)
+  const [showAuthDialog, setShowAuthDialog] = useState(false)
+  const [error, setError] = useState("")
+
+  const [form, setForm] = useState({
+    payerName: "",
+    payerPhone: "",
+    screenshotFile: null as File | null,
   })
 
+  const [now, setNow] = useState(() => Date.now())
+
   useEffect(() => {
-    sweepBookingExpiry()
-    const interval = setInterval(() => {
-      setNow(Date.now())
-      sweepBookingExpiry()
-    }, 1000)
-    return () => clearInterval(interval)
+    const timer = window.setInterval(() => setNow(Date.now()), 1000)
+    return () => window.clearInterval(timer)
   }, [])
 
   useEffect(() => {
@@ -58,98 +135,136 @@ function TournamentPaymentContent() {
       if (tournamentId) {
         canProceed("tournament_join", { tournamentId })
       }
+
       setShowAuthDialog(true)
     }
-  }, [canProceed, isAuthenticated, tournamentId])
-
-  const remainingMs = booking?.expiresAt ? Math.max(booking.expiresAt - now, 0) : 0
-  const isExpired = booking?.status === "expired" || remainingMs <= 0
-  const isPendingPayment = booking?.status === "pending_payment"
-  const isFormDisabled = !isPendingPayment || isExpired
-  const hasValidAmount = Number(booking?.tournament?.total ?? 0) > 0
-  const hasValidPaymentMethod = method === "vodafone" || method === "instapay"
-  const canSubmitPayment =
-    Boolean(booking?.id) &&
-    isPendingPayment &&
-    !isExpired &&
-    hasValidAmount &&
-    hasValidPaymentMethod &&
-    formData.payerName.trim().length > 0 &&
-    formData.paymentNumber.trim().length > 0 &&
-    formData.transactionReference.trim().length > 0
+  }, [isAuthenticated, tournamentId, canProceed])
 
   useEffect(() => {
-    setFormData((prev) => ({
-      ...prev,
-      payerName: user.fullName,
-      paymentNumber: prev.paymentNumber || user.phoneNumber,
-    }))
-  }, [user.fullName, user.phoneNumber])
+    if (!registrationId) {
+      setLoading(false)
+      return
+    }
 
-  const formattedTime = useMemo(() => {
-    const totalSeconds = Math.floor(remainingMs / 1000)
-    const minutes = Math.floor(totalSeconds / 60)
-    const seconds = totalSeconds % 60
-    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}`
-  }, [remainingMs])
+    getTournamentRegistrationById(registrationId)
+      .then((data) => {
+        setRegistration(data)
+      })
+      .finally(() => {
+        setLoading(false)
+      })
+  }, [registrationId])
 
-  const handleScreenshotChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (file) {
-      setFormData((prev) => ({ ...prev, screenshotName: file.name }))
+  const tournament = registration?.tournament
+
+  const tournamentName =
+    tournament?.name?.[language] ||
+    tournament?.name?.en ||
+    tournament?.name?.ar ||
+    "-"
+
+  const venueName =
+    tournament?.venueName?.[language] ||
+    tournament?.venueName?.en ||
+    tournament?.venueName?.ar ||
+    "-"
+
+  const scheduleLabel =
+    tournament?.scheduleLabel?.[language] ||
+    tournament?.scheduleLabel?.en ||
+    tournament?.scheduleLabel?.ar ||
+    "-"
+
+  const total = tournament?.entryFeePerTeam || 0
+  const teamName = registration?.teamName || "-"
+  const players = registration?.playersCount || 0
+
+  const expiresAt = registration?.expiresAt
+    ? new Date(registration.expiresAt).getTime()
+    : 0
+
+const remainingMs = expiresAt ? expiresAt - now : 0
+const isExpired = Boolean(expiresAt && remainingMs <= 0)
+
+useEffect(() => {
+  if (!registrationId || !expiresAt) return
+  if (!isExpired) return
+
+  expireTournamentRegistration(registrationId)
+  router.replace("/my-tournaments")
+}, [registrationId, expiresAt, isExpired, router])
+
+  const methodLabel = method === "vodafone_cash" ? "Vodafone Cash" : "Instapay"
+  const MethodIcon = method === "vodafone_cash" ? Wallet : CreditCard
+
+  const canSubmit = Boolean(
+    !isExpired &&
+    !submitting &&
+    form.payerName.trim() &&
+    form.payerPhone.trim() &&
+    form.screenshotFile,
+  )
+
+  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
+    e.preventDefault()
+    setError("")
+
+    if (!registrationId || !canSubmit) {
+      setError(text.required)
+      return
+    }
+    if (!/^[\u0600-\u06FFa-zA-Z\s]+$/.test(form.payerName)) {
+      setError("الاسم لازم يكون حروف فقط")
+      return
+    }
+
+    if (!/^\d{11}$/.test(form.payerPhone)) {
+      setError("رقم الهاتف لازم يكون 11 رقم")
+      return
+    }
+    setSubmitting(true)
+
+    try {
+      await submitTournamentPayment({
+        registrationId,
+        paymentMethod: method as any,
+        payerName: form.payerName.trim(),
+        payerPhone: form.payerPhone.trim(),
+        paymentScreenshotUrl: form.screenshotFile?.name || "",
+      })
+
+      router.push(
+        `/tournaments/${tournamentId}/join/payment-success?registrationId=${registrationId}`,
+      )
+    } catch (err) {
+      console.error(err)
+      setError(text.required)
+    } finally {
+      setSubmitting(false)
     }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!isAuthenticated || !canSubmitPayment || !booking) return
-
-    setIsLoading(true)
-    await submitBookingPayment(booking.id, {
-      payerName: formData.payerName.trim(),
-      paymentNumber: formData.paymentNumber.trim(),
-      transactionReference: formData.transactionReference.trim(),
-      screenshotName: formData.screenshotName,
-    })
-    setIsLoading(false)
-
-    router.push(`/tournaments/payment-success?bookingId=${booking.id}`)
-  }
-
-  const methodTitle =
-    method === "vodafone" ? t("playgroundBook.vodafoneTitle") : t("playgroundBook.instapayTitle")
-  const methodIcon =
-    method === "vodafone" ? (
-      <Wallet className="h-5 w-5 text-white" />
-    ) : (
-      <CreditCard className="h-5 w-5 text-white" />
-    )
-
-  const receiverText =
-    method === "vodafone" ? t("payment.receiverVodafone") : t("payment.receiverInstapay")
-
-  if (!hasHydrated) {
+  if (loading) {
     return (
       <AppShell>
-        <div className="mx-auto max-w-3xl px-6 py-8">
-          <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
+        <div className="flex min-h-[calc(100vh-4rem)] items-center justify-center p-6 text-center">
+          {text.loading}
         </div>
       </AppShell>
     )
   }
 
-  if (!booking) {
+  if (!registration) {
     return (
       <AppShell>
-        <div className="mx-auto max-w-3xl px-6 py-8">
-          <Card>
-            <CardContent className="space-y-4 p-6">
-              <p className="font-medium text-foreground">{t("bookings.noUpcomingBookings")}</p>
-              <Button asChild>
-                <Link href="/bookings">{t("common.myBookings")}</Link>
-              </Button>
-            </CardContent>
-          </Card>
+        <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center gap-4 p-6 text-center">
+          <p>{text.notFound}</p>
+
+          <Button asChild>
+            <Link href="/tournaments">
+              {isArabic ? "العودة للبطولات" : "Back to tournaments"}
+            </Link>
+          </Button>
         </div>
       </AppShell>
     )
@@ -157,175 +272,223 @@ function TournamentPaymentContent() {
 
   return (
     <AppShell>
-      <div className="mx-auto max-w-3xl px-6 py-8">
-        <Button variant="ghost" className="mb-6 gap-2" asChild>
-          <Link href={tournamentId ? `/tournaments/${tournamentId}/join` : "/tournaments"}>
-            <ArrowLeft className="h-4 w-4 icon-arrow-back" />
-            {t("payment.backJoin")}
-          </Link>
-        </Button>
+      <main className="min-h-[calc(100vh-4rem)] bg-muted/30 px-4 py-8">
+        <div className="mx-auto max-w-6xl">
+          <div className="mb-8 flex justify-end">
+            <Button variant="ghost" className="gap-2" asChild>
+              <Link href={`/tournaments/${tournamentId}`}>
+                {isArabic ? (
+                  <ArrowRight className="h-4 w-4" />
+                ) : (
+                  <ArrowLeft className="h-4 w-4" />
+                )}
+                {text.back}
+              </Link>
+            </Button>
+          </div>
 
-        <div className="mb-8">
-          <h1 className="text-3xl font-bold text-foreground">{t("payment.title")}</h1>
-          <p className="mt-2 text-muted-foreground">{tournamentName}</p>
-        </div>
+          <div className="mb-8 flex items-center justify-center gap-4">
+            <div className="flex items-center gap-2 text-muted-foreground">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-muted font-bold">
+                1
+              </span>
+              <span className="font-semibold">{text.details}</span>
+            </div>
 
-        <div className="grid gap-6 lg:grid-cols-[1.2fr_0.8fr]">
-          <Card>
-            <CardHeader>
-              <CardTitle>{t("payment.submitTournament")}</CardTitle>
-            </CardHeader>
+            <div className="h-1 w-40 rounded-full bg-primary" />
 
-            <CardContent className="space-y-6">
-              <div className="rounded-lg border bg-muted/30 p-4">
-                <div className="flex items-center gap-3">
-                  <div
-                    className={`flex h-12 w-12 items-center justify-center rounded-lg ${
-                      method === "vodafone" ? "bg-red-500" : "bg-blue-500"
-                    }`}
-                  >
-                    {methodIcon}
+            <div className="flex items-center gap-2 text-primary">
+              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-primary font-bold text-white">
+                2
+              </span>
+              <span className="font-semibold">{text.payment}</span>
+            </div>
+          </div>
+
+          <div className="grid gap-6 lg:grid-cols-2">
+            <Card className="rounded-2xl border-border/70 shadow-sm">
+              <CardContent className="p-6">
+                <h2 className="mb-6 text-xl font-bold">{text.summary}</h2>
+
+                <div className="grid gap-6 sm:grid-cols-[220px_1fr]">
+                  {tournament?.imageUrl ? (
+                    <img
+                      src={tournament.imageUrl}
+                      alt={tournamentName}
+                      className="h-44 w-full rounded-xl object-cover"
+                    />
+                  ) : null}
+
+                  <div className="space-y-3">
+                    <h3 className="text-2xl font-bold">{tournamentName}</h3>
+
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <MapPin className="h-4 w-4" />
+                      <span>{venueName}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Calendar className="h-4 w-4" />
+                      <span>{scheduleLabel}</span>
+                    </div>
+
+                    <div className="flex items-center gap-2 text-orange-600">
+                      <Clock className="h-4 w-4" />
+                      <span>
+                        {text.remaining} {formatRemaining(remainingMs)}
+                      </span>
+                    </div>
                   </div>
-                  <div>
-                    <p className="font-medium">{methodTitle}</p>
-                    <p className="text-sm text-muted-foreground">{receiverText}</p>
-                  </div>
-                </div>
-              </div>
-
-              <div
-                className={`rounded-lg border p-4 ${
-                  isExpired ? "border-destructive/30 bg-destructive/10" : "border-amber-200 bg-amber-50"
-                }`}
-              >
-                <div className="flex items-start gap-3">
-                  <Clock className={`mt-0.5 h-5 w-5 shrink-0 ${isExpired ? "text-destructive" : "text-amber-600"}`} />
-                  <div>
-                    <p className={`font-medium ${isExpired ? "text-destructive" : "text-amber-800"}`}>
-                      {isExpired ? t("payment.timerExpiredTitle") : t("payment.timerActiveTitle")}
-                    </p>
-                    <p className={`text-sm ${isExpired ? "text-destructive/80" : "text-amber-700"}`}>
-                      {isExpired ? t("payment.timerExpiredBody") : t("payment.timerActiveBody", { time: formattedTime })}
-                    </p>
-                  </div>
-                </div>
-              </div>
-
-              <div className="rounded-lg border border-amber-200 bg-amber-50 p-4">
-                <div className="flex items-start gap-3">
-                  <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-                  <div>
-                    <p className="font-medium text-amber-800">{t("payment.manualTitle")}</p>
-                    <p className="text-sm text-amber-700">{t("payment.manualBody")}</p>
-                  </div>
-                </div>
-              </div>
-
-              <form onSubmit={handleSubmit} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="payerName">{t("payment.payerName")}</Label>
-                  <Input
-                    id="payerName"
-                    placeholder={t("payment.payerPh")}
-                    value={formData.payerName}
-                    onChange={(e) => setFormData({ ...formData, payerName: e.target.value })}
-                    required
-                    disabled={isFormDisabled}
-                  />
                 </div>
 
-                <div className="space-y-2">
-                  <Label htmlFor="paymentNumber">
-                    {method === "vodafone" ? t("payment.walletNumber") : t("payment.instaNumber")}
-                  </Label>
-                  <Input
-                    id="paymentNumber"
-                    placeholder={t("payment.numberPh")}
-                    value={formData.paymentNumber}
-                    onChange={(e) => setFormData({ ...formData, paymentNumber: e.target.value })}
-                    required
-                    disabled={isFormDisabled}
-                  />
-                </div>
+                <div className="my-6 h-px bg-border" />
 
-                <div className="space-y-2">
-                  <Label htmlFor="transactionReference">{t("payment.transRef")}</Label>
-                  <Input
-                    id="transactionReference"
-                    placeholder={t("payment.transPh")}
-                    value={formData.transactionReference}
-                    onChange={(e) =>
-                      setFormData({ ...formData, transactionReference: e.target.value })
-                    }
-                    required
-                    disabled={isFormDisabled}
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label>{t("payment.screenshot")}</Label>
-                  <label
-                    className={`flex items-center gap-3 rounded-lg border border-dashed p-4 ${
-                      isExpired ? "cursor-not-allowed opacity-60" : "cursor-pointer hover:bg-muted/30"
-                    }`}
-                  >
-                    <Upload className="h-5 w-5 shrink-0 text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">
-                      {formData.screenshotName || t("payment.screenshotPh")}
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">
+                      {text.tournament}
                     </span>
+                    <span className="font-semibold">{tournamentName}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">{text.team}</span>
+                    <span className="font-semibold">{teamName}</span>
+                  </div>
+
+                  <div className="flex items-center justify-between gap-4">
+                    <span className="text-muted-foreground">
+                      {text.players}
+                    </span>
+                    <span className="font-semibold">{players}</span>
+                  </div>
+
+                  <div className="h-px bg-border" />
+
+                  <div className="flex items-center justify-between gap-4 text-lg font-bold">
+                    <span>{text.total}</span>
+                    <span className="text-primary">EGP {total}</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+
+            <Card className="rounded-2xl border-border/70 shadow-sm">
+              <CardContent className="p-6">
+                <h1 className="text-2xl font-bold">{text.completePayment}</h1>
+
+                <form onSubmit={handleSubmit} className="mt-6 space-y-4">
+                  <div className="flex h-16 items-center justify-end gap-2 rounded-xl border bg-background px-4 text-lg">
+                    <Clock className="h-5 w-5" />
+                    <span className="text-muted-foreground">
+                      {text.remaining}
+                    </span>
+                    <strong>{formatRemaining(remainingMs)}</strong>
+                  </div>
+
+                  <div className="flex items-center justify-between rounded-xl border bg-background p-4">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-xl bg-primary text-white">
+                      <MethodIcon className="h-7 w-7" />
+                    </div>
+
+                    <div className="text-right">
+                      <p className="text-sm text-muted-foreground">
+                        {text.selectedMethod}
+                      </p>
+                      <p className="font-bold">{methodLabel}</p>
+                    </div>
+                  </div>
+
+                  <div className="relative">
+                    <User className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      className="h-12 rounded-xl pr-10 text-right"
+                      placeholder={text.payerName}
+                      value={form.payerName}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/[0-9٠-٩]/g, "")
+                        setForm((prev) => ({
+                          ...prev,
+                          payerName: value,
+                        }))
+                      }}
+                    />
+                  </div>
+
+                  <div className="relative">
+                    <Phone className="pointer-events-none absolute right-3 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+                    <Input
+                      className="h-12 rounded-xl pr-10 text-right"
+                      placeholder={text.phone}
+                      value={form.payerPhone}
+                      inputMode="numeric"
+                      maxLength={11}
+                      onChange={(e) => {
+                        const value = e.target.value.replace(/\D/g, "").slice(0, 11)
+                        setForm((prev) => ({
+                          ...prev,
+                          payerPhone: value,
+                        }))
+                      }}
+                    />
+                  </div>
+
+                  <label className="flex min-h-28 cursor-pointer flex-col items-center justify-center rounded-xl border border-dashed border-primary/70 bg-primary/5 p-4 text-center text-primary transition hover:bg-primary/10">
+                    <Upload className="mb-2 h-6 w-6" />
+
+                    <span className="font-semibold">
+                      {form.screenshotFile?.name || text.upload}
+                    </span>
+
+                    <span className="mt-1 text-xs text-muted-foreground">
+                      {text.uploadHint}
+                    </span>
+
                     <input
                       type="file"
-                      className="hidden"
-                      accept="image/*"
-                      onChange={handleScreenshotChange}
-                      disabled={isFormDisabled}
+                      hidden
+                      accept="image/png,image/jpeg,image/jpg"
+                      onChange={(e) =>
+                        setForm((prev) => ({
+                          ...prev,
+                          screenshotFile: e.target.files?.[0] || null,
+                        }))
+                      }
                     />
                   </label>
-                </div>
 
-                <Button type="submit" className="w-full" disabled={isLoading || isFormDisabled || !canSubmitPayment}>
-                  {isExpired
-                    ? t("payment.expiredCta")
-                    : !isPendingPayment
-                      ? t("payment.underReviewStatus")
-                    : isLoading
-                      ? t("payment.submitting")
-                      : t("payment.submitCta", { amount: total })}
-                </Button>
-              </form>
-            </CardContent>
-          </Card>
+                  {error ? (
+                    <p className="text-sm text-destructive">{error}</p>
+                  ) : null}
 
-          <Card className="h-fit">
-            <CardHeader>
-              <CardTitle>{t("payment.summaryOrder")}</CardTitle>
-            </CardHeader>
+                  <Button
+                    type="submit"
+                    className="h-12 w-full rounded-xl text-base font-bold"
+                    disabled={!canSubmit}
+                  >
+                    {submitting ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        {text.submitting}
+                      </>
+                    ) : isExpired ? (
+                      text.expired
+                    ) : (
+                      text.submit
+                    )}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
 
-            <CardContent className="space-y-3">
-              <div className="flex justify-between gap-4 text-sm">
-                <span className="text-muted-foreground">{t("payment.tournament")}</span>
-                <span className="text-end">{tournamentName}</span>
-              </div>
-              <div className="flex justify-between gap-4 text-sm">
-                <span className="text-muted-foreground">{t("payment.team")}</span>
-                <span className="text-end">{teamName}</span>
-              </div>
-              <div className="flex justify-between gap-4 text-sm">
-                <span className="text-muted-foreground">{t("payment.players")}</span>
-                <span className="text-end">{players}</span>
-              </div>
-              <div className="flex justify-between gap-4 text-sm">
-                <span className="text-muted-foreground">{t("payment.method")}</span>
-                <span className="text-end">{methodTitle}</span>
-              </div>
-              <div className="flex justify-between border-t pt-3">
-                <span className="font-medium">{t("payment.total")}</span>
-                <span className="text-lg font-bold text-primary">{total} {t("common.egp")}</span>
-              </div>
-            </CardContent>
-          </Card>
+          <div className="mt-6 flex items-center justify-center gap-2 text-sm text-muted-foreground">
+            <ShieldCheck className="h-4 w-4" />
+            <span>{text.secured}</span>
+          </div>
         </div>
-      </div>
+      </main>
+
       <AuthRequiredDialog
         open={showAuthDialog}
         onOpenChange={setShowAuthDialog}
@@ -335,10 +498,10 @@ function TournamentPaymentContent() {
   )
 }
 
-export default function TournamentPaymentPage() {
+export default function Page() {
   return (
-    <Suspense fallback={null}>
-      <TournamentPaymentContent />
+    <Suspense>
+      <PaymentContent />
     </Suspense>
   )
 }

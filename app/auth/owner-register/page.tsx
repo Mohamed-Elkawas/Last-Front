@@ -89,20 +89,29 @@ export default function OwnerRegisterPage() {
   const validateForm = () => {
     if (!formData.firstName.trim()) return "الاسم الأول مطلوب"
     if (!formData.lastName.trim()) return "اسم العائلة مطلوب"
+
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) {
       return "البريد الإلكتروني غير صحيح"
     }
+
     if (!/^01[0-9]{9}$/.test(formData.phone.trim())) {
       return "رقم الهاتف يجب أن يكون 11 رقم ويبدأ بـ 01"
     }
+
     if (!formData.age || Number(formData.age) < 18) {
       return "عمر المالك يجب ألا يقل عن 18 سنة"
     }
+
     if (!formData.gender) return "النوع مطلوب"
+
     if (!formData.address.trim()) return "عنوان الملعب مطلوب"
+
     if (!formData.password || formData.password.length < 6) {
       return "كلمة المرور يجب ألا تقل عن 6 أحرف"
     }
+
+    // ✅ الإضافة الجديدة
+    if (!formData.license) return "الرخصة التجارية مطلوبة"
 
     return ""
   }
@@ -129,11 +138,14 @@ export default function OwnerRegisterPage() {
         email,
         phone: formData.phone.trim(),
         password: formData.password,
-        playgroundAddress: formData.address.trim(),
-        photoUrl: null,
-        businessLicenseUrl: null,
-      })
 
+        age: Number(formData.age),
+        gender: formData.gender,
+        playgroundAddress: formData.address.trim(),
+
+        photoUrl: null,
+        businessLicenseUrl: formData.license?.name || "",
+      })
       sessionStorage.setItem(
         PENDING_VERIFICATION_KEY,
         JSON.stringify({

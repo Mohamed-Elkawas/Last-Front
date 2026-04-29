@@ -2,13 +2,15 @@
 
 import { useMemo } from "react"
 import { useOwnerBookings as useOwnerBookingDomain } from "@/hooks/use-owner-bookings"
-import type { Booking } from "@/lib/types/booking"
+import type { Booking, BookingSlot } from "@/lib/types/booking"
 import type {
   BookingRecord,
   BookingStatus,
   CheckInStatus,
   PaymentStatus,
 } from "@/features/backoffice/shared/types/entities"
+
+type SlotLike = string | BookingSlot
 
 function toVenueLabel(booking: Booking) {
   if (booking.kind === "playground" && booking.playground) {
@@ -23,11 +25,25 @@ function toCustomerName(booking: Booking) {
     return booking.tournament.teamName
   }
 
-  return booking.playerDisplayName?.trim() || booking.payment?.payerName?.trim() || "Unknown Player"
+  return (
+    booking.playerDisplayName?.trim() ||
+    booking.payment?.payerName?.trim() ||
+    "Unknown Player"
+  )
 }
 
-function extractTimes(slotText: string) {
-  return Array.from(new Set(slotText.match(/\b\d{2}:\d{2}\b/g) ?? [])).sort()
+function extractTimes(slots: SlotLike[] | SlotLike | undefined) {
+  const slotList = Array.isArray(slots) ? slots : slots ? [slots] : []
+
+  const times = slotList.flatMap((slot) => {
+    if (typeof slot === "string") {
+      return slot.match(/\b\d{1,2}:\d{2}\b/g) ?? []
+    }
+
+    return [slot.startTime, slot.endTime].filter(Boolean)
+  })
+
+  return Array.from(new Set(times)).sort()
 }
 
 function addHour(time: string) {
@@ -35,7 +51,19 @@ function addHour(time: string) {
   const nextHours = Number.isFinite(hours) ? (hours + 1) % 24 : 0
   const nextMinutes = Number.isFinite(minutes) ? minutes : 0
 
-  return `${String(nextHours).padStart(2, "0")}:${String(nextMinutes).padStart(2, "0")}`
+  return `${String(nextHours).padStart(2, "0")}:${String(nextMinutes).padStart(
+    2,
+    "0",
+  )}`
+}
+
+function hasExplicitEnd(slots: SlotLike[] | SlotLike | undefined) {
+  const slotList = Array.isArray(slots) ? slots : slots ? [slots] : []
+
+  return slotList.some((slot) => {
+    if (typeof slot === "string") return slot.includes("-")
+    return Boolean(slot.endTime)
+  })
 }
 
 function resolvePlaygroundWindow(booking: Booking) {
@@ -47,9 +75,13 @@ function resolvePlaygroundWindow(booking: Booking) {
     }
   }
 
-  const times = extractTimes(booking.playground.slots)
+  const slots = booking.playground.slots
+  const times = extractTimes(slots)
+
   const start = times[0] ?? "00:00"
-  const end = times.length >= 2 && booking.playground.slots.includes("-") ? times[times.length - 1] : addHour(times[times.length - 1] ?? start)
+  const last = times[times.length - 1] ?? start
+  const end = times.length >= 2 && hasExplicitEnd(slots) ? last : addHour(last)
+
   const startTime = `${booking.playground.date}T${start}:00`
   const endTime = `${booking.playground.date}T${end}:00`
 
@@ -64,7 +96,10 @@ function toBookingStatus(booking: Booking): BookingStatus {
   if (booking.status === "confirmed" && booking.playedAt) return "completed"
   if (booking.status === "confirmed") return "confirmed"
   if (booking.status === "expired") return "expired_hold"
-  if (booking.status === "cancelled" || booking.status === "rejected") return "cancelled"
+  if (booking.status === "cancelled" || booking.status === "rejected") {
+    return "cancelled"
+  }
+
   return "pending_payment_review"
 }
 
@@ -115,7 +150,10 @@ function toRecord(booking: Booking): BookingRecord {
 export function useOwnerBookings() {
   const { playgroundBookingsForOwner, hasHydrated } = useOwnerBookingDomain()
 
-  const data = useMemo(() => playgroundBookingsForOwner.map(toRecord), [playgroundBookingsForOwner])
+  const data = useMemo(
+    () => playgroundBookingsForOwner.map(toRecord),
+    [playgroundBookingsForOwner],
+  )
 
   return {
     data,

@@ -1,24 +1,28 @@
 "use client"
 
-import { useCallback, useEffect, useState } from "react"
-import type { Playground } from "@/lib/types/playground"
+import { useCallback, useEffect, useMemo, useState } from "react"
+import type { Playground, PlaygroundListQuery } from "@/lib/types/playground"
 import { getPlaygroundById, listPlaygrounds } from "@/lib/services/playgrounds.service"
 import { usePlaygroundsStore } from "@/lib/stores/playgrounds.store"
 
-export function usePlaygroundsCatalog() {
+export function usePlaygroundsCatalog(query: PlaygroundListQuery = {}) {
   const [playgrounds, setPlaygrounds] = useState<Playground[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
   const userPlaygrounds = usePlaygroundsStore((state) => state.userPlaygrounds)
 
+  const queryKey = useMemo(() => JSON.stringify(query), [query])
+
   const load = useCallback(() => {
     setLoading(true)
-    listPlaygrounds()
+    setError(null)
+
+    listPlaygrounds(query)
       .then(setPlaygrounds)
       .catch((e) => setError(e instanceof Error ? e : new Error(String(e))))
       .finally(() => setLoading(false))
-  }, [])
+  }, [queryKey])
 
   useEffect(() => {
     load()
@@ -42,6 +46,8 @@ export function usePlayground(id: string | undefined) {
     }
 
     setLoading(true)
+    setError(null)
+
     getPlaygroundById(id)
       .then(setPlayground)
       .catch((e) => setError(e instanceof Error ? e : new Error(String(e))))

@@ -5,124 +5,16 @@ import type {
   CreateTournamentBookingPayload,
   PaymentProof,
   PersistedBooking,
+  BookingSlot,
 } from "@/lib/types/booking"
-  import { derivePaymentStatus } from "@/lib/domain/booking/payment-status"
-import { mockDelay } from "@/lib/services/mock-delay"
-import { pushNotification } from "@/lib/services/notifications.service"
+import { derivePaymentStatus } from "@/lib/domain/booking/payment-status"
+import { addLocalNotification } from "@/lib/notifications"
 import {
   grantBookingRewardPoints,
   redeemPointsForBooking,
   refundRedeemedPoints,
   revokeBookingRewardPoints,
 } from "@/lib/services/points.service"
-
-function notifyBookingCreated(bookingId: string) {
-  pushNotification({
-    type: "booking_created",
-    audience: "player",
-    title: "Booking created",
-    message: "Your playground booking has been created and is awaiting payment.",
-    entityId: bookingId,
-    entityType: "booking",
-    actionHref: "/bookings",
-  })
-}
-
-function notifyOwnerBookingRequest(bookingId: string, venueLabel: string) {
-  pushNotification({
-    type: "owner_booking_request",
-    audience: "owner",
-    title: "New booking request",
-    message: `A player requested a slot at ${venueLabel}. Review the pipeline.`,
-    entityId: bookingId,
-    entityType: "booking",
-    actionHref: "/owner/requests",
-  })
-}
-
-function notifyOwnerPaymentReview(bookingId: string, venueLabel: string) {
-  pushNotification({
-    type: "owner_booking_payment",
-    audience: "owner",
-    title: "Payment proof received",
-    message: `Payment was submitted for ${venueLabel}. You can review and decide.`,
-    entityId: bookingId,
-    entityType: "booking",
-    actionHref: "/owner/requests",
-  })
-}
-
-function notifyOwnerTournamentRegistration(bookingId: string, tournamentLabel: string, teamName: string) {
-  pushNotification({
-    type: "owner_tournament_registration",
-    audience: "owner",
-    title: "Tournament registration",
-    message: `Team “${teamName}” joined ${tournamentLabel}. Track payment in bookings.`,
-    entityId: bookingId,
-    entityType: "tournament",
-    actionHref: "/owner/tournaments",
-  })
-}
-
-function notifyTournamentJoined(bookingId: string) {
-  pushNotification({
-    type: "tournament_joined",
-    audience: "player",
-    title: "Tournament join request created",
-    message: "Your team registration was created and is awaiting payment confirmation.",
-    entityId: bookingId,
-    entityType: "tournament",
-    actionHref: "/bookings",
-  })
-}
-
-function notifyPaymentSubmitted(bookingId: string) {
-  pushNotification({
-    type: "payment_submitted",
-    audience: "player",
-    title: "Payment submitted",
-    message: "Your payment proof was submitted successfully and is under review.",
-    entityId: bookingId,
-    entityType: "booking",
-    actionHref: "/bookings",
-  })
-}
-
-function notifyBookingCancelled(bookingId: string) {
-  pushNotification({
-    type: "booking_cancelled",
-    audience: "player",
-    title: "Booking cancelled",
-    message: "Your booking has been cancelled.",
-    entityId: bookingId,
-    entityType: "booking",
-    actionHref: "/bookings",
-  })
-}
-
-function notifyBookingApproved(bookingId: string) {
-  pushNotification({
-    type: "booking_approved",
-    audience: "player",
-    title: "Booking confirmed",
-    message: "An owner approved your booking.",
-    entityId: bookingId,
-    entityType: "booking",
-    actionHref: "/bookings",
-  })
-}
-
-function notifyBookingRejected(bookingId: string) {
-  pushNotification({
-    type: "booking_rejected",
-    audience: "player",
-    title: "Booking rejected",
-    message: "Your booking was rejected by the venue owner.",
-    entityId: bookingId,
-    entityType: "booking",
-    actionHref: "/bookings",
-  })
-}
 
 export function toBookingDto(persisted: PersistedBooking): Booking {
   return {
@@ -135,29 +27,26 @@ export function getPersistedBookings(): PersistedBooking[] {
   return bookingsPersistenceRepository.list()
 }
 
-export function createPlaygroundBooking(input: CreatePlaygroundBookingPayload): string {
-  const bookingId = bookingsPersistenceRepository.createPlaygroundBooking(input)
-  if (input.pointsDiscount > 0) {
-    redeemPointsForBooking(bookingId, Math.round(input.pointsDiscount))
+export async function createPlaygroundBooking(
+  input: CreatePlaygroundBookingPayload,
+): Promise<string> {
+  if (!input.slots || input.slots.length === 0) {
+    throw new Error("SLOTS_REQUIRED")
   }
-  notifyBookingCreated(bookingId)
-  const venue =
-    typeof input.playgroundName === "object"
-      ? input.playgroundName.en || input.playgroundName.ar || "your venue"
-      : String(input.playgroundName)
-  notifyOwnerBookingRequest(bookingId, venue)
+
+  const bookingId = bookingsPersistenceRepository.createPlaygroundBooking(input)
+
+  if (input.pointsDiscount > 0) {
+    await redeemPointsForBooking(bookingId, Math.round(input.pointsDiscount))
+  }
+
   return bookingId
 }
 
-export function createTournamentBooking(input: CreateTournamentBookingPayload): string {
-  const bookingId = bookingsPersistenceRepository.createTournamentBooking(input)
-  notifyTournamentJoined(bookingId)
-  const tName =
-    typeof input.tournamentName === "object"
-      ? input.tournamentName.en || input.tournamentName.ar || "a tournament"
-      : String(input.tournamentName)
-  notifyOwnerTournamentRegistration(bookingId, tName, input.teamName)
-  return bookingId
+export function createTournamentBooking(
+  input: CreateTournamentBookingPayload,
+): string {
+  return bookingsPersistenceRepository.createTournamentBooking(input)
 }
 
 export async function submitBookingPayment(
@@ -165,101 +54,136 @@ export async function submitBookingPayment(
   proof: PaymentProof,
   options?: { moveToAwaitingAdmin?: boolean },
 ): Promise<void> {
-  await mockDelay(200)
-  const previous = bookingsPersistenceRepository.list().find((b) => b.id === bookingId)
+  const previous = getPersistedBookings().find((b) => b.id === bookingId)
+
   bookingsPersistenceRepository.submitPayment(bookingId, proof, options)
-  const next = bookingsPersistenceRepository.list().find((b) => b.id === bookingId)
-  if (previous?.status === "pending_payment" && next && next.status !== previous.status) {
+
+  const next = getPersistedBookings().find((b) => b.id === bookingId)
+
+  if (
+    previous?.status === "pending_payment" &&
+    next &&
+    next.status !== previous.status
+  ) {
+    const bookingName =
+      next.kind === "playground"
+        ? next.playground?.name?.en || next.playground?.name?.ar || "playground"
+        : next.tournament?.name || "tournament"
+
+    const playerName = next.playerDisplayName || "A player"
+
+    addLocalNotification({
+      audience: "owner",
+      type: "owner_booking_request",
+      title: "New payment submitted",
+      message: `${playerName} submitted payment for ${bookingName}.`,
+    })
+
     const total = next.playground?.total ?? next.tournament?.total ?? 0
-    grantBookingRewardPoints(bookingId, total)
-    notifyPaymentSubmitted(bookingId)
-    const label =
-      next.kind === "playground" && next.playground
-        ? next.playground.name.en || next.playground.name.ar || "your venue"
-        : next.tournament?.name.en || next.tournament?.name.ar || "tournament"
-    notifyOwnerPaymentReview(bookingId, label)
-  }
-}
 
-export function cancelBooking(bookingId: string): void {
-  const previous = bookingsPersistenceRepository.list().find((b) => b.id === bookingId)
-  bookingsPersistenceRepository.cancelBooking(bookingId)
-  const next = bookingsPersistenceRepository.list().find((b) => b.id === bookingId)
-  if (previous && previous.status !== "cancelled" && next?.status === "cancelled") {
-    const usedPoints = Math.round(next.playground?.pointsDiscount ?? 0)
-    if (usedPoints > 0) {
-      refundRedeemedPoints(bookingId, usedPoints)
+    if (total > 0) {
+      await grantBookingRewardPoints(bookingId, total)
     }
-    notifyBookingCancelled(bookingId)
   }
 }
 
-export function clearCancelledBookings(): void {
-  bookingsPersistenceRepository.clearCancelledBookings()
-}
+export async function cancelBooking(bookingId: string): Promise<void> {
+  const previous = getPersistedBookings().find((b) => b.id === bookingId)
 
-function extractTimes(slotText: string): string[] {
-  return slotText.match(/\b\d{2}:\d{2}\b/g) ?? []
-}
+  bookingsPersistenceRepository.cancelBooking(bookingId)
 
-function hasSlotOverlap(a?: string, b?: string) {
-  const aTimes = extractTimes(a ?? "")
-  const bTimes = extractTimes(b ?? "")
+  const next = getPersistedBookings().find((b) => b.id === bookingId)
 
-  return aTimes.some((time) => bTimes.includes(time))
+  if (
+    previous &&
+    previous.status !== "cancelled" &&
+    next?.status === "cancelled"
+  ) {
+    const usedPoints = Math.round(next.playground?.pointsDiscount ?? 0)
+
+    if (usedPoints > 0) {
+      await refundRedeemedPoints(bookingId, usedPoints)
+    }
+
+    addLocalNotification({
+      audience: "player",
+      type: "booking_cancelled",
+      title: "Booking cancelled",
+      message: "Your booking has been cancelled.",
+    })
+  }
 }
 
 export function approveBooking(bookingId: string): void {
-  const allBookings = bookingsPersistenceRepository.list()
-  const target = allBookings.find((b) => b.id === bookingId)
+  const all = getPersistedBookings()
+  const target = all.find((b) => b.id === bookingId)
 
-  if (!target) return
+  if (!target || target.kind !== "playground") return
 
-  const hasConflict = allBookings.some((booking) => {
-    if (booking.id === target.id) return false
+  const hasConflict = all.some((b) => {
+    if (b.id === target.id) return false
 
     return (
-      booking.kind === "playground" &&
-      target.kind === "playground" &&
-      booking.status === "confirmed" &&
-      booking.playground?.id === target.playground?.id &&
-      booking.playground?.date === target.playground?.date &&
-      hasSlotOverlap(booking.playground?.slots, target.playground?.slots)
+      b.kind === "playground" &&
+      b.status === "confirmed" &&
+      b.playground?.id === target.playground?.id &&
+      b.playground?.date === target.playground?.date &&
+      hasSlotConflict(b.playground?.slots, target.playground?.slots)
     )
   })
 
   if (hasConflict) {
-    throw new Error("المعاد ده متحجز بالفعل ومينفعش توافق عليه")
+    throw new Error("SLOT_ALREADY_BOOKED")
   }
-
-  const previous = target
 
   bookingsPersistenceRepository.approveBooking(bookingId)
 
-  const next = bookingsPersistenceRepository.list().find((b) => b.id === bookingId)
-
-  if (previous?.status !== "confirmed" && next?.status === "confirmed") {
-    notifyBookingApproved(bookingId)
-  }
+  addLocalNotification({
+    audience: "player",
+    type: "booking_approved",
+    title: "Booking approved",
+    message: "Your booking has been approved.",
+  })
 }
 
-export function rejectBooking(bookingId: string): void {
-  const previous = bookingsPersistenceRepository.list().find((b) => b.id === bookingId)
+function hasSlotConflict(a?: BookingSlot[], b?: BookingSlot[]) {
+  if (!a || !b) return false
+
+  return a.some((slotA) =>
+    b.some((slotB) => slotA.slotKey === slotB.slotKey),
+  )
+}
+
+export async function rejectBooking(bookingId: string): Promise<void> {
+  const previous = getPersistedBookings().find((b) => b.id === bookingId)
+
   bookingsPersistenceRepository.rejectBooking(bookingId)
-  const next = bookingsPersistenceRepository.list().find((b) => b.id === bookingId)
+
+  const next = getPersistedBookings().find((b) => b.id === bookingId)
+
   if (previous?.status !== "rejected" && next?.status === "rejected") {
     const usedPoints = Math.round(next.playground?.pointsDiscount ?? 0)
+
     if (previous?.status === "pending_payment" && usedPoints > 0) {
-      refundRedeemedPoints(bookingId, usedPoints)
+      await refundRedeemedPoints(bookingId, usedPoints)
     }
+
     const paidTotal = next.playground?.total ?? next.tournament?.total ?? 0
+
     if (
-      (previous?.status === "payment_submitted" || previous?.status === "awaiting_admin_approval") &&
+      (previous?.status === "payment_submitted" ||
+        previous?.status === "awaiting_admin_approval") &&
       paidTotal > 0
     ) {
-      revokeBookingRewardPoints(bookingId, paidTotal)
+      await revokeBookingRewardPoints(bookingId, paidTotal)
     }
-    notifyBookingRejected(bookingId)
+
+    addLocalNotification({
+      audience: "player",
+      type: "booking_rejected",
+      title: "Booking rejected",
+      message: "Your booking has been rejected.",
+    })
   }
 }
 
@@ -277,4 +201,8 @@ export function markBookingRated(bookingId: string): void {
 
 export function sweepBookingExpiry(): void {
   bookingsPersistenceRepository.sweepExpired()
+}
+
+export function clearCancelledBookings(): void {
+  bookingsPersistenceRepository.clearCancelledBookings()
 }

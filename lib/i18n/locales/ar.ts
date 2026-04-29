@@ -5,6 +5,10 @@ export const ar = {
     playgrounds: "الملاعب",
     tournaments: "البطولات",
     myBookings: "حجوزاتي",
+
+    // ✅ FIX
+    myTournaments: "بطولاتي",
+
     favorites: "المفضلة",
     profile: "الملف الشخصي",
     notifications: "الإشعارات",
@@ -74,6 +78,7 @@ export const ar = {
   navbar: {
     profileMenu: "قائمة الملف الشخصي",
     unreadNotifications: "إشعارات غير مقروءة: {count}",
+    
   },
 
   pagination: {
@@ -526,6 +531,13 @@ export const ar = {
     requiredTitle: "يجب تسجيل الدخول",
     requiredDescription: "يجب عليك تسجيل الدخول أولاً للمتابعة",
     requiredFootnote: "إنشاء حساب يستغرق أقل من دقيقة",
+    verifyResetOtpTitle: "تأكيد رمز استعادة كلمة المرور",
+    verifyResetOtpDescription: "أدخل الرمز المكون من 6 أرقام المرسل إلى بريدك الإلكتروني",
+    pendingVerificationMissing: "بيانات التحقق غير موجودة. ارجع وابدأ من جديد.",
+    pendingVerificationInvalid: "تعذر قراءة بيانات التحقق.",
+    verificationCode: "رمز التحقق",
+    enterSixDigitCode: "أدخل الرمز المكون من 6 أرقام",
+    backToForgotPassword: "الرجوع لنسيت كلمة المرور", 
   },
 
   playgrounds: {
@@ -549,6 +561,10 @@ export const ar = {
     title: "البطولات",
     subtitle: "نافس الفرق الأخرى واربح جوائز رائعة",
     searchPlaceholder: "ابحث عن البطولات...",
+
+    // ✅ FIX
+    live: "مباشر",
+
     all: "الكل",
     open: "مفتوحة",
     full: "مكتملة",

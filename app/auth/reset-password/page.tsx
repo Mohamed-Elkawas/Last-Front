@@ -161,7 +161,7 @@ export default function ResetPasswordPage() {
                   <Input
                     id="password"
                     type="password"
-                    placeholder={t("auth.passwordPlaceholder")}
+                    placeholder={t("auth.enterNewPassword")}
                     className="ps-10"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
@@ -179,7 +179,7 @@ export default function ResetPasswordPage() {
                   <Input
                     id="confirmPassword"
                     type="password"
-                    placeholder={t("auth.confirmPasswordPlaceholder")}
+                    placeholder={t("auth.enterNewPassword")}
                     className="ps-10"
                     value={confirmPassword}
                     onChange={(e) => setConfirmPassword(e.target.value)}
@@ -189,7 +189,7 @@ export default function ResetPasswordPage() {
               </div>
 
               <Button type="submit" className="w-full" disabled={!canReset}>
-                {isLoading ? t("auth.resetting") : t("auth.resetPasswordButton")}
+                {isLoading ? t("auth.resetting") : t("auth.setNewPassword")}
               </Button>
 
               <div className="text-center">

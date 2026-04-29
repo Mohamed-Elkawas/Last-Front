@@ -8,7 +8,40 @@ import type { PlaygroundBookingSlotDefinition } from "@/lib/types/playground-boo
 import type { Playground, PlaygroundListQuery } from "@/lib/types/playground"
 import { mockDelay } from "@/lib/services/mock-delay"
 
-export async function listPlaygrounds(query?: PlaygroundListQuery): Promise<Playground[]> {
+function matchesSearch(playground: Playground, search?: string) {
+  if (!search?.trim()) return true
+
+  const searchLower = search.trim().toLowerCase()
+
+  return (
+    playground.name.en.toLowerCase().includes(searchLower) ||
+    playground.name.ar.toLowerCase().includes(searchLower) ||
+    playground.location.en.toLowerCase().includes(searchLower) ||
+    playground.location.ar.toLowerCase().includes(searchLower)
+  )
+}
+
+function matchesGovernorate(playground: Playground, query?: PlaygroundListQuery) {
+  if (!query?.governorateKey || query.governorateKey === "all") return true
+
+  return playground.governorateKey === query.governorateKey
+}
+
+function matchesCity(playground: Playground, query?: PlaygroundListQuery) {
+  if (!query?.cityKey) return true
+
+  return playground.cityKey === query.cityKey
+}
+
+function matchesPitchSizes(playground: Playground, query?: PlaygroundListQuery) {
+  if (!query?.pitchSizes?.length) return true
+
+  return query.pitchSizes.some((size) => playground.pitchSizes.includes(size))
+}
+
+export async function listPlaygrounds(
+  query?: PlaygroundListQuery,
+): Promise<Playground[]> {
   await mockDelay()
 
   const store = usePlaygroundsStore.getState()
@@ -17,33 +50,16 @@ export async function listPlaygrounds(query?: PlaygroundListQuery): Promise<Play
   const demoPlaygrounds = repositoryListPlaygrounds(query)
   const userPlaygrounds = store.userPlaygrounds
 
-  let allPlaygrounds = [...demoPlaygrounds, ...userPlaygrounds].filter(
-    (playground) => !deletedIds.has(playground.id)
-  )
+  return [...demoPlaygrounds, ...userPlaygrounds].filter((playground) => {
+    if (deletedIds.has(playground.id)) return false
 
-  if (query?.search) {
-    const searchLower = query.search.toLowerCase()
-
-    allPlaygrounds = allPlaygrounds.filter(
-      (p) =>
-        p.name.en.toLowerCase().includes(searchLower) ||
-        p.name.ar.toLowerCase().includes(searchLower) ||
-        p.location.en.toLowerCase().includes(searchLower) ||
-        p.location.ar.toLowerCase().includes(searchLower)
+    return (
+      matchesSearch(playground, query?.search) &&
+      matchesGovernorate(playground, query) &&
+      matchesCity(playground, query) &&
+      matchesPitchSizes(playground, query)
     )
-  }
-
-  if (query?.cityKey) {
-    allPlaygrounds = allPlaygrounds.filter((p) => p.cityKey === query.cityKey)
-  }
-
-  if (query?.pitchSizes && query.pitchSizes.length > 0) {
-    allPlaygrounds = allPlaygrounds.filter((p) =>
-      query.pitchSizes!.some((size) => p.pitchSizes.includes(size))
-    )
-  }
-
-  return allPlaygrounds
+  })
 }
 
 export async function getPlaygroundById(id: string): Promise<Playground | null> {
@@ -64,7 +80,9 @@ export async function getPlaygroundById(id: string): Promise<Playground | null> 
   return playground
 }
 
-export async function createPlayground(playground: Omit<Playground, "id">): Promise<Playground> {
+export async function createPlayground(
+  playground: Omit<Playground, "id">,
+): Promise<Playground> {
   await mockDelay(100)
 
   const newPlayground: Playground = {
@@ -79,7 +97,7 @@ export async function createPlayground(playground: Omit<Playground, "id">): Prom
 
 export async function updatePlayground(
   id: string,
-  updates: Partial<Playground>
+  updates: Partial<Playground>,
 ): Promise<Playground | null> {
   await mockDelay(100)
 
@@ -93,7 +111,6 @@ export async function updatePlayground(
 
   return null
 }
-
 
 export async function deletePlayground(id: string): Promise<void> {
   await mockDelay(100)
