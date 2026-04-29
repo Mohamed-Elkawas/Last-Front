@@ -46,7 +46,7 @@ export function AppShell({ children, showNavbar = true }: AppShellProps) {
   return (
     <div dir={dir} className="min-h-screen bg-background">
       {showNavbar && <Navbar />}
-      <main>{children}</main>
+<main className="pb-20 lg:pb-0">{children}</main>
     </div>
   )
 }

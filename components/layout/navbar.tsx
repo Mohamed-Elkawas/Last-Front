@@ -204,7 +204,7 @@ export function Navbar() {
 
       {/* Bottom Navigation (Mobile) */}
       {isAuthenticated && (
-        <nav className="fixed bottom-0 inset-x-0 z-50 border-t bg-card md:hidden">
+        <nav className="fixed bottom-0 inset-x-0 z-50 border-t bg-card lg:hidden">
           <div className="grid grid-cols-4">
             {bottomNavLinks.map((link) => {
               const Icon = link.icon
