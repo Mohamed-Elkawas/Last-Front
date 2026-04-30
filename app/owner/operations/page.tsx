@@ -25,19 +25,49 @@ import { useAppTranslations } from "@/hooks/use-app-translations"
 import { useOwnerBookings } from "@/hooks/use-owner-bookings"
 import type { Booking } from "@/lib/types/booking"
 
-type TranslateFn = (
-  key: string,
-  params?: Record<string, string | number | boolean | null | undefined>
-) => string
-
-function playerLabel(booking: Booking, t: TranslateFn) {
+function playerLabel(booking: Booking, t: (key: string) => string) {
   return (
     booking.playerDisplayName?.trim() ||
     booking.payment?.payerName?.trim() ||
-    t("ownerBookings.unknownPlayer")
+    t("ownerBookings.unknownPlayer") ||
+    "Unknown player"
   )
 }
 
+type SlotObject = {
+  startTime?: string
+  endTime?: string
+  slotKey?: string
+}
+
+function isSlotObject(value: unknown): value is SlotObject {
+  return Boolean(value) && typeof value === "object"
+}
+
+function formatSlots(slots: unknown): string {
+  if (!slots) return "-"
+
+  const slotList = Array.isArray(slots) ? slots : [slots]
+
+  const formatted = slotList
+    .map((slot) => {
+      if (typeof slot === "string") return slot
+      
+      if (isSlotObject(slot)) {
+        if (slot.startTime && slot.endTime) {
+          return `${slot.startTime} - ${slot.endTime}`
+        }
+
+        if (slot.startTime) return slot.startTime
+        if (slot.endTime) return slot.endTime
+      }
+
+      return ""
+    })
+    .filter(Boolean)
+
+  return formatted.length ? formatted.join(", ") : "-"
+}
 export default function OwnerOperationsPage() {
   const { t, hasHydrated } = useAppTranslations()
   const {
@@ -90,7 +120,9 @@ export default function OwnerOperationsPage() {
   const handleDetectedQr = async (rawValue: string) => {
     const bookingId = rawValue.replace("QR-", "").trim()
 
-    const booking = playgroundBookingsForOwner.find((item) => item.id === bookingId)
+    const booking = playgroundBookingsForOwner.find(
+      (item) => item.id === bookingId
+    )
 
     if (!booking) {
       setScannerError("Booking not found for this QR code.")
@@ -135,10 +167,12 @@ export default function OwnerOperationsPage() {
         async (decodedText) => {
           await handleDetectedQr(decodedText)
         },
-        () => {}
+        () => { }
       )
     } catch {
-      setScannerError("Camera failed to start. Allow camera permission and try again.")
+      setScannerError(
+        "Camera failed to start. Allow camera permission and try again."
+      )
       await stopScanner()
     } finally {
       isStartingRef.current = false
@@ -198,7 +232,8 @@ export default function OwnerOperationsPage() {
         <CardHeader>
           <CardTitle>On pitch today</CardTitle>
           <CardDescription>
-            Confirmed bookings dated today that still need to be closed out after the match.
+            Confirmed bookings dated today that still need to be closed out
+            after the match.
           </CardDescription>
         </CardHeader>
 
@@ -221,7 +256,8 @@ export default function OwnerOperationsPage() {
                   </p>
 
                   <p className="text-muted-foreground">
-                    {booking.playground?.dateLabel} · {booking.playground?.slots}
+                    {booking.playground?.dateLabel || "-"} ·{" "}
+                    {formatSlots(booking.playground?.slots)}
                   </p>
 
                   <p>
@@ -255,12 +291,16 @@ export default function OwnerOperationsPage() {
             <CheckCircle2 className="h-5 w-5" />
             Completed / played
           </CardTitle>
-          <CardDescription>Bookings already checked in or marked as played.</CardDescription>
+          <CardDescription>
+            Bookings already checked in or marked as played.
+          </CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-3">
           {completedBookings.length === 0 ? (
-            <p className="text-sm text-muted-foreground">No played matches yet.</p>
+            <p className="text-sm text-muted-foreground">
+              No played matches yet.
+            </p>
           ) : (
             completedBookings.map((booking) => (
               <div
@@ -273,9 +313,11 @@ export default function OwnerOperationsPage() {
                       booking.playground?.name.ar ||
                       "Playground"}
                   </p>
+
                   <p className="text-sm text-muted-foreground">
-                    {playerLabel(booking, t)} · {booking.playground?.dateLabel} ·{" "}
-                    {booking.playground?.slots}
+                    {playerLabel(booking, t)} ·{" "}
+                    {booking.playground?.dateLabel || "-"} ·{" "}
+                    {formatSlots(booking.playground?.slots)}
                   </p>
                 </div>
 
@@ -347,15 +389,18 @@ export default function OwnerOperationsPage() {
                 <p>
                   <strong>Field:</strong>{" "}
                   {scannedBooking.playground?.name.en ||
-                    scannedBooking.playground?.name.ar}
+                    scannedBooking.playground?.name.ar ||
+                    "Playground"}
                 </p>
 
                 <p>
-                  <strong>Date:</strong> {scannedBooking.playground?.dateLabel}
+                  <strong>Date:</strong>{" "}
+                  {scannedBooking.playground?.dateLabel || "-"}
                 </p>
 
                 <p>
-                  <strong>Time:</strong> {scannedBooking.playground?.slots}
+                  <strong>Time:</strong>{" "}
+                  {formatSlots(scannedBooking.playground?.slots)}
                 </p>
 
                 <p>
