@@ -5,21 +5,31 @@ import { AuthRequiredDialog } from "@/components/auth/auth-required-dialog"
 import { AppShell } from "@/components/layout/app-shell"
 import { OwnerShell } from "@/components/owner/owner-shell"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
 import { useAppTranslations } from "@/hooks/use-app-translations"
 import { useOwnerAccess } from "@/hooks/use-owner-access"
 import { useAuth } from "@/hooks/use-auth"
 import { devSimulateAdminApproveOwner } from "@/lib/services/owner.service"
 import { AUTH_ROUTES } from "@/lib/auth/routes"
 
-
-
-export default function OwnerLayout({ children }: { children: React.ReactNode }) {
+export default function OwnerLayout({
+  children,
+}: {
+  children: React.ReactNode
+}) {
   const { applicationStatus, rejectionMessage, isReady } = useOwnerAccess()
   const { isAuthenticated, accountType, hasHydrated: authReady } = useAuth()
   const { t, hasHydrated: i18nReady } = useAppTranslations()
+
   const [devBusy, setDevBusy] = useState(false)
 
+  // ⏳ Loading
   if (!isReady || !i18nReady || !authReady) {
     return (
       <AppShell>
@@ -30,6 +40,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     )
   }
 
+  // ❌ Not logged in
   if (!isAuthenticated) {
     return (
       <AppShell>
@@ -48,6 +59,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     )
   }
 
+  // ❌ Not owner
   if (accountType !== "owner") {
     return (
       <AppShell>
@@ -58,6 +70,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     )
   }
 
+  // 🔄 No application yet
   if (applicationStatus === "none") {
     return (
       <AppShell>
@@ -68,6 +81,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     )
   }
 
+  // ⏳ Pending approval
   if (applicationStatus === "pending") {
     return (
       <AppShell>
@@ -75,11 +89,13 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
           <Card>
             <CardHeader>
               <CardTitle>{t("ownerPortal.pendingTitle")}</CardTitle>
-              <CardDescription>{t("ownerPortal.pendingBody")}</CardDescription>
+              <CardDescription>
+                {t("ownerPortal.pendingBody")}
+              </CardDescription>
             </CardHeader>
 
             <CardContent className="flex flex-col gap-3">
-              {process.env.NODE_ENV === "development" ? (
+              {process.env.NODE_ENV === "development" && (
                 <Button
                   type="button"
                   variant="secondary"
@@ -92,7 +108,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
                 >
                   {t("ownerPortal.devSimulateApprove")}
                 </Button>
-              ) : null}
+              )}
             </CardContent>
           </Card>
         </div>
@@ -100,6 +116,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     )
   }
 
+  // ❌ Rejected
   if (applicationStatus === "rejected") {
     return (
       <AppShell>
@@ -119,6 +136,7 @@ export default function OwnerLayout({ children }: { children: React.ReactNode })
     )
   }
 
+  // ✅ Approved owner → show dashboard/pages
   return (
     <AppShell showNavbar={false}>
       <OwnerShell>{children}</OwnerShell>
