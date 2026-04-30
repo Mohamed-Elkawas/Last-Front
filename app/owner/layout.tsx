@@ -35,13 +35,7 @@ export default function OwnerLayout({
   const ready = isReady && i18nReady && authReady
   const isOwner = isAuthenticated && accountType === "owner"
 
-  useEffect(() => {
-    if (!ready) return
 
-    if (isOwner && applicationStatus === "none") {
-      router.replace(AUTH_ROUTES.ownerRegister)
-    }
-  }, [ready, isOwner, applicationStatus, router])
 
   if (!ready) {
     return (
@@ -83,10 +77,8 @@ export default function OwnerLayout({
 
   if (applicationStatus === "none") {
     return (
-      <AppShell>
-        <div className="mx-auto max-w-lg px-6 py-16 text-center text-muted-foreground">
-          {t("ownerPortal.redirecting") || "Redirecting..."}
-        </div>
+      <AppShell showNavbar={false}>
+        <OwnerShell>{children}</OwnerShell>
       </AppShell>
     )
   }
@@ -126,7 +118,7 @@ export default function OwnerLayout({
                   {devBusy
                     ? "Approving..."
                     : t("ownerPortal.devSimulateApprove") ||
-                      "Dev: simulate approval"}
+                    "Dev: simulate approval"}
                 </Button>
               )}
             </CardContent>
@@ -149,7 +141,7 @@ export default function OwnerLayout({
                 {rejectionMessage?.trim()
                   ? rejectionMessage
                   : t("ownerPortal.rejectedBodyDefault") ||
-                    "Your owner application was rejected."}
+                  "Your owner application was rejected."}
               </CardDescription>
             </CardHeader>
           </Card>
