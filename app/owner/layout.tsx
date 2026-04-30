@@ -1,6 +1,7 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useState } from "react"
+import { useRouter } from "next/navigation"
 import { AuthRequiredDialog } from "@/components/auth/auth-required-dialog"
 import { AppShell } from "@/components/layout/app-shell"
 import { OwnerShell } from "@/components/owner/owner-shell"
@@ -23,29 +24,40 @@ export default function OwnerLayout({
 }: {
   children: React.ReactNode
 }) {
+  const router = useRouter()
+
   const { applicationStatus, rejectionMessage, isReady } = useOwnerAccess()
   const { isAuthenticated, accountType, hasHydrated: authReady } = useAuth()
   const { t, hasHydrated: i18nReady } = useAppTranslations()
 
   const [devBusy, setDevBusy] = useState(false)
 
-  // ⏳ Loading
-  if (!isReady || !i18nReady || !authReady) {
+  const ready = isReady && i18nReady && authReady
+  const isOwner = isAuthenticated && accountType === "owner"
+
+  useEffect(() => {
+    if (!ready) return
+
+    if (isOwner && applicationStatus === "none") {
+      router.replace(AUTH_ROUTES.ownerRegister)
+    }
+  }, [ready, isOwner, applicationStatus, router])
+
+  if (!ready) {
     return (
       <AppShell>
         <div className="mx-auto max-w-lg px-6 py-16 text-center text-muted-foreground">
-          {t("common.loading")}
+          {t("common.loading") || "Loading..."}
         </div>
       </AppShell>
     )
   }
 
-  // ❌ Not logged in
   if (!isAuthenticated) {
     return (
       <AppShell>
         <div className="mx-auto max-w-lg px-6 py-16 text-center text-muted-foreground">
-          {t("auth.requiredDescription")}
+          {t("auth.requiredDescription") || "Please sign in first."}
         </div>
 
         <AuthRequiredDialog
@@ -59,7 +71,6 @@ export default function OwnerLayout({
     )
   }
 
-  // ❌ Not owner
   if (accountType !== "owner") {
     return (
       <AppShell>
@@ -70,27 +81,28 @@ export default function OwnerLayout({
     )
   }
 
-  // 🔄 No application yet
   if (applicationStatus === "none") {
     return (
       <AppShell>
         <div className="mx-auto max-w-lg px-6 py-16 text-center text-muted-foreground">
-          {t("ownerPortal.redirecting")}
+          {t("ownerPortal.redirecting") || "Redirecting..."}
         </div>
       </AppShell>
     )
   }
 
-  // ⏳ Pending approval
   if (applicationStatus === "pending") {
     return (
       <AppShell>
         <div className="mx-auto flex max-w-lg flex-col gap-6 px-6 py-16">
           <Card>
             <CardHeader>
-              <CardTitle>{t("ownerPortal.pendingTitle")}</CardTitle>
+              <CardTitle>
+                {t("ownerPortal.pendingTitle") || "Application pending"}
+              </CardTitle>
               <CardDescription>
-                {t("ownerPortal.pendingBody")}
+                {t("ownerPortal.pendingBody") ||
+                  "Your owner application is waiting for approval."}
               </CardDescription>
             </CardHeader>
 
@@ -102,11 +114,19 @@ export default function OwnerLayout({
                   disabled={devBusy}
                   onClick={async () => {
                     setDevBusy(true)
-                    await devSimulateAdminApproveOwner()
-                    setDevBusy(false)
+
+                    try {
+                      await devSimulateAdminApproveOwner()
+                      router.refresh()
+                    } finally {
+                      setDevBusy(false)
+                    }
                   }}
                 >
-                  {t("ownerPortal.devSimulateApprove")}
+                  {devBusy
+                    ? "Approving..."
+                    : t("ownerPortal.devSimulateApprove") ||
+                      "Dev: simulate approval"}
                 </Button>
               )}
             </CardContent>
@@ -116,18 +136,20 @@ export default function OwnerLayout({
     )
   }
 
-  // ❌ Rejected
   if (applicationStatus === "rejected") {
     return (
       <AppShell>
         <div className="mx-auto max-w-lg px-6 py-16">
           <Card>
             <CardHeader>
-              <CardTitle>{t("ownerPortal.rejectedTitle")}</CardTitle>
+              <CardTitle>
+                {t("ownerPortal.rejectedTitle") || "Application rejected"}
+              </CardTitle>
               <CardDescription>
                 {rejectionMessage?.trim()
                   ? rejectionMessage
-                  : t("ownerPortal.rejectedBodyDefault")}
+                  : t("ownerPortal.rejectedBodyDefault") ||
+                    "Your owner application was rejected."}
               </CardDescription>
             </CardHeader>
           </Card>
@@ -136,7 +158,6 @@ export default function OwnerLayout({
     )
   }
 
-  // ✅ Approved owner → show dashboard/pages
   return (
     <AppShell showNavbar={false}>
       <OwnerShell>{children}</OwnerShell>
