@@ -84,9 +84,11 @@ export function Navbar() {
   return (
     <>
       <header className="sticky top-0 z-50 w-full border-b border-border bg-card">
-        <div className="mx-auto flex h-16 max-w-7xl items-center justify-between gap-3 px-3 sm:px-6">
-          <div className="flex min-w-0 items-center gap-6">
-            <AppLogo />
+        <div className="mx-auto flex min-h-16 w-full max-w-7xl items-center justify-between gap-2 px-3 py-2 sm:px-6">
+          <div className="flex min-w-0 flex-1 items-center gap-3 lg:gap-6">
+            <div className="min-w-0 shrink">
+              <AppLogo />
+            </div>
 
             <nav className="hidden items-center gap-1 lg:flex">
               {navLinks.map((link) => {
@@ -106,7 +108,7 @@ export function Navbar() {
                         : "text-muted-foreground hover:bg-muted hover:text-foreground",
                     )}
                   >
-                    <Icon className="h-4 w-4" />
+                    <Icon className="h-4 w-4 shrink-0" />
                     <span>{link.label}</span>
                   </Link>
                 )
@@ -114,7 +116,7 @@ export function Navbar() {
             </nav>
           </div>
 
-          <div className="flex shrink-0 items-center gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             {isAuthenticated ? (
               <>
                 <div className="flex h-9 items-center gap-1 rounded-full bg-accent px-2">
@@ -150,7 +152,7 @@ export function Navbar() {
                           {user.fullName?.charAt(0) || "U"}
                         </AvatarFallback>
                       </Avatar>
-                      <span className="text-sm">{user.fullName}</span>
+                      <span className="truncate text-sm">{user.fullName}</span>
                     </div>
 
                     <DropdownMenuSeparator />
@@ -213,14 +215,21 @@ export function Navbar() {
             ) : (
               <>
                 <LanguageToggleButton />
-                <Button asChild size="sm">
+
+                <Button asChild size="sm" className="h-10 rounded-xl px-3 text-sm">
                   <Link href={AUTH_ROUTES.signIn.player}>
                     {t("auth.signIn")}
                   </Link>
                 </Button>
-                <Button asChild size="sm">
+
+                <Button
+                  asChild
+                  size="sm"
+                  className="h-10 max-w-[96px] rounded-xl px-3 text-sm sm:max-w-none sm:px-4"
+                >
                   <Link href={AUTH_ROUTES.signUp.player}>
-                    {t("auth.createAccount")}
+                    <span className="hidden sm:inline">{t("auth.createAccount")}</span>
+                    <span className="sm:hidden">Sign up</span>
                   </Link>
                 </Button>
               </>
@@ -231,7 +240,12 @@ export function Navbar() {
 
       {isAuthenticated && (
         <nav className="fixed inset-x-0 bottom-0 z-50 border-t bg-card lg:hidden">
-          <div className="grid grid-cols-4">
+          <div
+            className="grid"
+            style={{
+              gridTemplateColumns: `repeat(${bottomNavLinks.length}, minmax(0, 1fr))`,
+            }}
+          >
             {bottomNavLinks.map((link) => {
               const Icon = link.icon
               const isActive =
@@ -243,12 +257,12 @@ export function Navbar() {
                   key={link.href}
                   href={link.href}
                   className={cn(
-                    "flex flex-col items-center py-2 text-xs",
+                    "flex min-w-0 flex-col items-center justify-center gap-1 px-1 py-2 text-center text-[10px] font-semibold leading-tight",
                     isActive ? "text-primary" : "text-muted-foreground",
                   )}
                 >
-                  <Icon className="h-5 w-5" />
-                  {link.label}
+                  <Icon className="h-5 w-5 shrink-0" />
+                  <span className="max-w-full truncate">{link.label}</span>
                 </Link>
               )
             })}
