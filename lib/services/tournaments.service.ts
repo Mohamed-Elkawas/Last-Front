@@ -113,7 +113,6 @@ export async function createTournamentRegistration(
     throw new Error("Tournament is not open for registration")
   }
 
-  // 🔥 منع تكرار اسم الفريق
   const normalizedTeamName = input.teamName.trim().toLowerCase()
 
   const isTeamNameTaken = useTournamentRegistrationsStore
@@ -214,7 +213,9 @@ export async function submitTournamentPayment(
 
 export async function getTournamentRegistrationById(
   registrationId: string,
-): Promise<(TournamentRegistration & { tournament?: TournamentDetail | null }) | null> {
+): Promise<
+  (TournamentRegistration & { tournament?: TournamentDetail | null }) | null
+> {
   if (!registrationId) return null
 
   cleanupRegistrations()
@@ -250,17 +251,22 @@ export async function listMyTournamentRegistrations(): Promise<
   )
 }
 
-export async function listOwnerTournamentRegistrations(
-  ownerId?: string,
-): Promise<
-  Array<TournamentRegistration & { tournament?: TournamentDetail | null }>
-> {
+export async function listOwnerTournamentRegistrations(params?: {
+  ownerId?: string
+  tournamentId?: string
+}) {
   cleanupRegistrations()
+
+  const { ownerId, tournamentId } = params || {}
 
   const registrations = useTournamentRegistrationsStore
     .getState()
     .listRegistrations()
-    .filter((registration) => !ownerId || registration.ownerId === ownerId)
+    .filter((registration) => {
+      if (ownerId && registration.ownerId !== ownerId) return false
+      if (tournamentId && registration.tournamentId !== tournamentId) return false
+      return true
+    })
 
   return Promise.all(
     registrations.map(async (registration) => ({

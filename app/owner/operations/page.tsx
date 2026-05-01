@@ -4,6 +4,7 @@ import { Html5Qrcode } from "html5-qrcode"
 import { useEffect, useMemo, useRef, useState } from "react"
 import { format, startOfToday } from "date-fns"
 import { CheckCircle2, Phone, QrCode, XCircle } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
 import {
   Card,
@@ -25,12 +26,88 @@ import { useAppTranslations } from "@/hooks/use-app-translations"
 import { useOwnerBookings } from "@/hooks/use-owner-bookings"
 import type { Booking } from "@/lib/types/booking"
 
-function playerLabel(booking: Booking, t: (key: string) => string) {
+type Lang = "ar" | "en"
+
+const copy = {
+  en: {
+    title: "Daily Operations",
+    subtitle:
+      "Confirmed reservations with contact, payment method, and completion tracking.",
+    scanQr: "Scan QR Code",
+    onPitchToday: "On pitch today",
+    onPitchTodayDesc:
+      "Confirmed bookings dated today that still need to be closed out after the match.",
+    nothingToday: "Nothing scheduled for today.",
+    playground: "Playground",
+    player: "Player",
+    noPhone: "No phone",
+    markPlayed: "Mark played",
+    completedPlayed: "Completed / played",
+    completedDesc: "Bookings already checked in or marked as played.",
+    noPlayedYet: "No played matches yet.",
+    completed: "Completed",
+    scanBookingQr: "Scan Booking QR",
+    scanBookingQrDesc:
+      "Point the camera at the player QR code to confirm check-in.",
+    bookingNotFound: "Booking not found for this QR code.",
+    bookingNotConfirmed: "This booking is not confirmed yet.",
+    alreadyCheckedIn: "This booking is already checked in.",
+    qrNotReady: "QR reader is not ready. Please close and try again.",
+    cameraFailed:
+      "Camera failed to start. Allow camera permission and try again.",
+    bookingFound: "Booking found",
+    phone: "Phone",
+    field: "Field",
+    date: "Date",
+    time: "Time",
+    amount: "Amount",
+    close: "Close",
+    confirmCheckIn: "Confirm Check-in",
+    currency: "EGP",
+  },
+  ar: {
+    title: "التشغيل اليومي",
+    subtitle:
+      "تابع الحجوزات المؤكدة، بيانات التواصل، طريقة الدفع، وحالة إنهاء اللعب.",
+    scanQr: "مسح كود QR",
+    onPitchToday: "حجوزات اليوم",
+    onPitchTodayDesc:
+      "الحجوزات المؤكدة بتاريخ اليوم والتي تحتاج إلى إنهاء بعد المباراة.",
+    nothingToday: "لا توجد حجوزات مجدولة اليوم.",
+    playground: "الملعب",
+    player: "اللاعب",
+    noPhone: "لا يوجد رقم هاتف",
+    markPlayed: "تأكيد اللعب",
+    completedPlayed: "المكتملة / تم اللعب",
+    completedDesc: "الحجوزات التي تم تسجيل حضورها أو تأكيد لعبها.",
+    noPlayedYet: "لا توجد مباريات تم لعبها بعد.",
+    completed: "مكتمل",
+    scanBookingQr: "مسح QR الحجز",
+    scanBookingQrDesc:
+      "وجّه الكاميرا إلى كود QR الخاص باللاعب لتأكيد الحضور.",
+    bookingNotFound: "لم يتم العثور على حجز لهذا الكود.",
+    bookingNotConfirmed: "هذا الحجز لم يتم تأكيده بعد.",
+    alreadyCheckedIn: "تم تسجيل حضور هذا الحجز بالفعل.",
+    qrNotReady: "قارئ QR غير جاهز. أغلق النافذة وحاول مرة أخرى.",
+    cameraFailed:
+      "فشل تشغيل الكاميرا. اسمح بصلاحية الكاميرا ثم حاول مرة أخرى.",
+    bookingFound: "تم العثور على الحجز",
+    phone: "الهاتف",
+    field: "الملعب",
+    date: "التاريخ",
+    time: "الوقت",
+    amount: "المبلغ",
+    close: "إغلاق",
+    confirmCheckIn: "تأكيد الحضور",
+    currency: "جنيه",
+  },
+} as const
+
+function playerLabel(booking: Booking, fallback: string) {
   return (
     booking.playerDisplayName?.trim() ||
     booking.payment?.payerName?.trim() ||
-    t("ownerBookings.unknownPlayer") ||
-    "Unknown player"
+    fallback
   )
 }
 
@@ -52,7 +129,7 @@ function formatSlots(slots: unknown): string {
   const formatted = slotList
     .map((slot) => {
       if (typeof slot === "string") return slot
-      
+
       if (isSlotObject(slot)) {
         if (slot.startTime && slot.endTime) {
           return `${slot.startTime} - ${slot.endTime}`
@@ -68,13 +145,34 @@ function formatSlots(slots: unknown): string {
 
   return formatted.length ? formatted.join(", ") : "-"
 }
+
+function getPlaygroundName(booking: Booking, fallback: string, lang: Lang) {
+  if (lang === "ar") {
+    return (
+      booking.playground?.name.ar ||
+      booking.playground?.name.en ||
+      fallback
+    )
+  }
+
+  return (
+    booking.playground?.name.en ||
+    booking.playground?.name.ar ||
+    fallback
+  )
+}
+
 export default function OwnerOperationsPage() {
-  const { t, hasHydrated } = useAppTranslations()
+  const { language, hasHydrated } = useAppTranslations()
   const {
     playgroundBookingsForOwner,
     markBookingPlayed,
     hasHydrated: bookingsReady,
   } = useOwnerBookings()
+
+  const lang: Lang = language === "ar" ? "ar" : "en"
+  const text = copy[lang]
+  const dir = lang === "ar" ? "rtl" : "ltr"
 
   const [scannerOpen, setScannerOpen] = useState(false)
   const [scannerError, setScannerError] = useState<string | null>(null)
@@ -91,7 +189,7 @@ export default function OwnerOperationsPage() {
         booking.kind === "playground" &&
         booking.playground?.date === todayStr &&
         booking.status === "confirmed" &&
-        !booking.playedAt
+        !booking.playedAt,
     )
   }, [playgroundBookingsForOwner, todayStr])
 
@@ -99,7 +197,7 @@ export default function OwnerOperationsPage() {
     return playgroundBookingsForOwner.filter(
       (booking) =>
         booking.kind === "playground" &&
-        (booking.status === "completed" || Boolean(booking.playedAt))
+        (booking.status === "completed" || Boolean(booking.playedAt)),
     )
   }, [playgroundBookingsForOwner])
 
@@ -121,21 +219,21 @@ export default function OwnerOperationsPage() {
     const bookingId = rawValue.replace("QR-", "").trim()
 
     const booking = playgroundBookingsForOwner.find(
-      (item) => item.id === bookingId
+      (item) => item.id === bookingId,
     )
 
     if (!booking) {
-      setScannerError("Booking not found for this QR code.")
+      setScannerError(text.bookingNotFound)
       return
     }
 
     if (booking.status !== "confirmed") {
-      setScannerError("This booking is not confirmed yet.")
+      setScannerError(text.bookingNotConfirmed)
       return
     }
 
     if (booking.playedAt) {
-      setScannerError("This booking is already checked in.")
+      setScannerError(text.alreadyCheckedIn)
       return
     }
 
@@ -149,7 +247,7 @@ export default function OwnerOperationsPage() {
     const readerElement = document.getElementById("qr-reader")
 
     if (!readerElement) {
-      setScannerError("QR reader is not ready. Please close and try again.")
+      setScannerError(text.qrNotReady)
       return
     }
 
@@ -167,12 +265,10 @@ export default function OwnerOperationsPage() {
         async (decodedText) => {
           await handleDetectedQr(decodedText)
         },
-        () => { }
+        () => {},
       )
     } catch {
-      setScannerError(
-        "Camera failed to start. Allow camera permission and try again."
-      )
+      setScannerError(text.cameraFailed)
       await stopScanner()
     } finally {
       isStartingRef.current = false
@@ -207,16 +303,13 @@ export default function OwnerOperationsPage() {
   if (!hasHydrated || !bookingsReady) return null
 
   return (
-    <div className="mx-auto max-w-5xl space-y-8">
-      <div className="flex items-center justify-between gap-4">
-        <div>
+    <div dir={dir} className="mx-auto max-w-5xl space-y-8">
+      <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+        <div className="text-start">
           <h1 className="text-2xl font-semibold text-foreground md:text-3xl">
-            {t("ownerOperations.title") || "Daily operations"}
+            {text.title}
           </h1>
-          <p className="mt-2 text-sm text-muted-foreground">
-            {t("ownerOperations.subtitle") ||
-              "Confirmed reservations with contact, payment method, and completion tracking."}
-          </p>
+          <p className="mt-2 text-sm text-muted-foreground">{text.subtitle}</p>
         </div>
 
         <Button
@@ -224,23 +317,20 @@ export default function OwnerOperationsPage() {
           className="gap-2 bg-green-600 hover:bg-green-700"
         >
           <QrCode className="h-4 w-4" />
-          Scan QR Code
+          {text.scanQr}
         </Button>
       </div>
 
       <Card>
         <CardHeader>
-          <CardTitle>On pitch today</CardTitle>
-          <CardDescription>
-            Confirmed bookings dated today that still need to be closed out
-            after the match.
-          </CardDescription>
+          <CardTitle>{text.onPitchToday}</CardTitle>
+          <CardDescription>{text.onPitchTodayDesc}</CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-3">
           {todayBookings.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              Nothing scheduled for today.
+              {text.nothingToday}
             </p>
           ) : (
             todayBookings.map((booking) => (
@@ -250,9 +340,7 @@ export default function OwnerOperationsPage() {
               >
                 <div className="space-y-1 text-sm">
                   <p className="font-semibold">
-                    {booking.playground?.name.en ||
-                      booking.playground?.name.ar ||
-                      "Playground"}
+                    {getPlaygroundName(booking, text.playground, lang)}
                   </p>
 
                   <p className="text-muted-foreground">
@@ -261,13 +349,15 @@ export default function OwnerOperationsPage() {
                   </p>
 
                   <p>
-                    <span className="text-muted-foreground">Player:</span>{" "}
-                    {playerLabel(booking, t)}
+                    <span className="text-muted-foreground">
+                      {text.player}:
+                    </span>{" "}
+                    {playerLabel(booking, text.player)}
                   </p>
 
                   <p className="flex items-center gap-1 text-muted-foreground">
                     <Phone className="h-3.5 w-3.5" />
-                    {booking.playerPhone?.trim() || "No phone"}
+                    {booking.playerPhone?.trim() || text.noPhone}
                   </p>
                 </div>
 
@@ -277,7 +367,7 @@ export default function OwnerOperationsPage() {
                       if (value === true) markBookingPlayed(booking.id)
                     }}
                   />
-                  <span>Mark played</span>
+                  <span>{text.markPlayed}</span>
                 </label>
               </div>
             ))
@@ -289,17 +379,15 @@ export default function OwnerOperationsPage() {
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <CheckCircle2 className="h-5 w-5" />
-            Completed / played
+            {text.completedPlayed}
           </CardTitle>
-          <CardDescription>
-            Bookings already checked in or marked as played.
-          </CardDescription>
+          <CardDescription>{text.completedDesc}</CardDescription>
         </CardHeader>
 
         <CardContent className="space-y-3">
           {completedBookings.length === 0 ? (
             <p className="text-sm text-muted-foreground">
-              No played matches yet.
+              {text.noPlayedYet}
             </p>
           ) : (
             completedBookings.map((booking) => (
@@ -309,26 +397,26 @@ export default function OwnerOperationsPage() {
               >
                 <div>
                   <p className="font-medium">
-                    {booking.playground?.name.en ||
-                      booking.playground?.name.ar ||
-                      "Playground"}
+                    {getPlaygroundName(booking, text.playground, lang)}
                   </p>
 
                   <p className="text-sm text-muted-foreground">
-                    {playerLabel(booking, t)} ·{" "}
+                    {playerLabel(booking, text.player)} ·{" "}
                     {booking.playground?.dateLabel || "-"} ·{" "}
                     {formatSlots(booking.playground?.slots)}
                   </p>
                 </div>
 
-                <div className="text-right text-sm">
+                <div className="text-end text-sm">
                   <p className="font-semibold">
-                    {booking.playground?.total ?? 0} EGP
+                    {booking.playground?.total ?? 0} {text.currency}
                   </p>
                   <p className="text-muted-foreground">
                     {booking.playedAt
-                      ? new Date(booking.playedAt).toLocaleString()
-                      : "Completed"}
+                      ? new Date(booking.playedAt).toLocaleString(
+                          lang === "ar" ? "ar-EG" : "en-US",
+                        )
+                      : text.completed}
                   </p>
                 </div>
               </div>
@@ -347,12 +435,10 @@ export default function OwnerOperationsPage() {
           }
         }}
       >
-        <DialogContent className="sm:max-w-lg">
+        <DialogContent dir={dir} className="sm:max-w-lg">
           <DialogHeader>
-            <DialogTitle>Scan Booking QR</DialogTitle>
-            <DialogDescription>
-              Point the camera at the player QR code to confirm check-in.
-            </DialogDescription>
+            <DialogTitle>{text.scanBookingQr}</DialogTitle>
+            <DialogDescription>{text.scanBookingQrDesc}</DialogDescription>
           </DialogHeader>
 
           <div className="space-y-4">
@@ -374,38 +460,37 @@ export default function OwnerOperationsPage() {
               <div className="space-y-3 rounded-xl border bg-green-50 p-4 text-sm">
                 <div className="flex items-center gap-2 font-semibold text-green-700">
                   <CheckCircle2 className="h-5 w-5" />
-                  Booking found
+                  {text.bookingFound}
                 </div>
 
                 <p>
-                  <strong>Player:</strong> {playerLabel(scannedBooking, t)}
+                  <strong>{text.player}:</strong>{" "}
+                  {playerLabel(scannedBooking, text.player)}
                 </p>
 
                 <p>
-                  <strong>Phone:</strong>{" "}
-                  {scannedBooking.playerPhone?.trim() || "No phone"}
+                  <strong>{text.phone}:</strong>{" "}
+                  {scannedBooking.playerPhone?.trim() || text.noPhone}
                 </p>
 
                 <p>
-                  <strong>Field:</strong>{" "}
-                  {scannedBooking.playground?.name.en ||
-                    scannedBooking.playground?.name.ar ||
-                    "Playground"}
+                  <strong>{text.field}:</strong>{" "}
+                  {getPlaygroundName(scannedBooking, text.playground, lang)}
                 </p>
 
                 <p>
-                  <strong>Date:</strong>{" "}
+                  <strong>{text.date}:</strong>{" "}
                   {scannedBooking.playground?.dateLabel || "-"}
                 </p>
 
                 <p>
-                  <strong>Time:</strong>{" "}
+                  <strong>{text.time}:</strong>{" "}
                   {formatSlots(scannedBooking.playground?.slots)}
                 </p>
 
                 <p>
-                  <strong>Amount:</strong>{" "}
-                  {scannedBooking.playground?.total ?? 0} EGP
+                  <strong>{text.amount}:</strong>{" "}
+                  {scannedBooking.playground?.total ?? 0} {text.currency}
                 </p>
               </div>
             )}
@@ -413,7 +498,7 @@ export default function OwnerOperationsPage() {
 
           <DialogFooter>
             <Button variant="outline" onClick={() => setScannerOpen(false)}>
-              Close
+              {text.close}
             </Button>
 
             {scannedBooking && (
@@ -421,8 +506,8 @@ export default function OwnerOperationsPage() {
                 onClick={confirmCheckIn}
                 className="bg-green-600 hover:bg-green-700"
               >
-                <CheckCircle2 className="mr-2 h-4 w-4" />
-                Confirm Check-in
+                <CheckCircle2 className="h-4 w-4" />
+                {text.confirmCheckIn}
               </Button>
             )}
           </DialogFooter>

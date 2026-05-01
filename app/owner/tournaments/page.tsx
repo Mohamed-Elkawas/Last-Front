@@ -1,19 +1,22 @@
 "use client"
 
-import type { FormEvent } from "react"
+import Link from "next/link"
 import { useMemo, useState } from "react"
 import { PlusCircle, Trash2 } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
-import { Input } from "@/components/ui/input"
-import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Badge } from "@/components/ui/badge"
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card"
+
 import { useAppTranslations } from "@/hooks/use-app-translations"
 import { useBookingStore } from "@/lib/booking-store"
 import { useOwnerTournamentsStore } from "@/lib/owner-tournaments-store"
 import { countTournamentRegistrations } from "@/lib/domain/tournament/catalog-merge"
-import { publishOwnerTournament } from "@/lib/services/owner-tournaments.service"
+
 import {
   AlertDialog,
   AlertDialogAction,
@@ -24,6 +27,7 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+
 type LocalizedText = string | { en?: string; ar?: string } | null | undefined
 
 function getLocalizedText(value: LocalizedText, language: "en" | "ar") {
@@ -33,54 +37,66 @@ function getLocalizedText(value: LocalizedText, language: "en" | "ar") {
 }
 
 export default function OwnerTournamentsPage() {
-  const { t, language, hasHydrated } = useAppTranslations()
-  const { tournaments: ownerTournaments, endTournament } = useOwnerTournamentsStore()
-  const bookings = useBookingStore((s) => s.bookings)
+  const { language, hasHydrated } = useAppTranslations()
+  const isArabic = language === "ar"
 
-  const [fee, setFee] = useState("400")
-  const [maxTeams, setMaxTeams] = useState("16")
-  const [title, setTitle] = useState("")
-  const [desc, setDesc] = useState("")
-  const [schedule, setSchedule] = useState(language === "ar" ? "٢٨ أبريل – ٢ مايو ٢٠٢٦" : "Apr 28 – May 2, 2026")
-  const [startDate, setStartDate] = useState(language === "ar" ? "٢٨ أبريل ٢٠٢٦" : "Apr 28, 2026")
-  const [endDate, setEndDate] = useState(language === "ar" ? "٢ مايو ٢٠٢٦" : "May 2, 2026")
+  const tournaments = useOwnerTournamentsStore((state) => state.tournaments)
+  const endTournament = useOwnerTournamentsStore((state) => state.endTournament)
+  const bookings = useBookingStore((state) => state.bookings)
+
   const [endingTournament, setEndingTournament] = useState<string | null>(null)
-  const [deletingTournament, setDeletingTournament] = useState<string | null>(null)
+  const [deletingTournament, setDeletingTournament] = useState<string | null>(
+    null,
+  )
+
+  const labels = {
+    title: isArabic ? "البطولات" : "Tournaments",
+    subtitle: isArabic ? "إدارة البطولات والمسابقات" : "Manage your competitions",
+    create: isArabic ? "إنشاء بطولة" : "Create Tournament",
+    listTitle: isArabic ? "بطولاتك" : "Your Tournaments",
+    empty: isArabic ? "لا توجد بطولات حتى الآن" : "No tournaments yet",
+    manage: isArabic ? "إدارة" : "Manage",
+    end: isArabic ? "إنهاء" : "End",
+    teams: isArabic ? "فرق" : "teams",
+    egp: isArabic ? "جنيه" : "EGP",
+    deleteTitle: isArabic ? "حذف البطولة؟" : "Delete Tournament?",
+    deleteDesc: isArabic
+      ? "هل أنت متأكد من حذف هذه البطولة؟ سيتم حذف بياناتها من التخزين المحلي."
+      : "Are you sure you want to delete this tournament? Its local data will be removed.",
+    delete: isArabic ? "حذف" : "Delete",
+    cancel: isArabic ? "إلغاء" : "Cancel",
+    endTitle: isArabic ? "إنهاء البطولة؟" : "End Tournament?",
+    endDesc: isArabic
+      ? "هل أنت متأكد من إنهاء هذه البطولة؟"
+      : "Are you sure you want to end this tournament?",
+    confirm: isArabic ? "تأكيد" : "Confirm",
+  }
 
   const rows = useMemo(() => {
-    return ownerTournaments.map((r) => {
-      const joined = countTournamentRegistrations(bookings, r.id)
-      return { record: r, joined }
-    })
-  }, [ownerTournaments, bookings])
+    return tournaments.map((tournament) => ({
+      record: tournament,
+      joined: countTournamentRegistrations(bookings, tournament.id),
+    }))
+  }, [tournaments, bookings])
 
-  const handlePublish = (e: FormEvent) => {
-    e.preventDefault()
-    if (!title.trim()) return
+  const handleDeleteTournament = (tournamentId: string) => {
+    const currentTournaments = useOwnerTournamentsStore.getState().tournaments
 
-    publishOwnerTournament({
-      name: { en: title.trim(), ar: title.trim() },
-      description: { en: desc.trim() || "—", ar: desc.trim() || "—" },
-      entryFeePerTeam: Math.max(0, Number(fee) || 0),
-      maxTeams: Math.max(2, Math.min(64, Number(maxTeams) || 8)),
-      scheduleLabel: { en: schedule.trim(), ar: schedule.trim() },
-      startDateLabel: { en: startDate.trim(), ar: startDate.trim() },
-      endDateLabel: { en: endDate.trim(), ar: endDate.trim() },
-      imageUrl: "",
-      venueName: {
-        ar: "",
-        en: ""
-      },
-      prize: {
-        first: 0,
-        second: 0,
-        bestPlayer: 0,
-        bestGoalkeeper: 0
-      }
+    useOwnerTournamentsStore.setState({
+      tournaments: currentTournaments.filter((item) => item.id !== tournamentId),
     })
 
-    setTitle("")
-    setDesc("")
+    const currentBookings = useBookingStore.getState().bookings
+
+    useBookingStore.setState({
+      bookings: currentBookings.filter(
+        (booking) =>
+          booking.kind !== "tournament" ||
+          booking.tournament?.id !== tournamentId,
+      ),
+    })
+
+    setDeletingTournament(null)
   }
 
   const handleEndTournament = (tournamentId: string) => {
@@ -88,267 +104,136 @@ export default function OwnerTournamentsPage() {
     setEndingTournament(null)
   }
 
-  const handleDeleteTournament = (tournamentId: string) => {
-    // Remove tournament from store
-    const { tournaments } = useOwnerTournamentsStore.getState()
-    const updatedTournaments = tournaments.filter(t => t.id !== tournamentId)
-    useOwnerTournamentsStore.setState({ tournaments: updatedTournaments })
-    
-    // Remove related bookings
-    const { bookings } = useBookingStore.getState()
-    const updatedBookings = bookings.filter(b => b.kind !== "tournament" || b.tournament?.id !== tournamentId)
-    useBookingStore.setState({ bookings: updatedBookings })
-    
-    setDeletingTournament(null)
-  }
-
   if (!hasHydrated) return null
 
   return (
-    <div className="mx-auto max-w-6xl space-y-8">
-      <div>
-        <h1 className="text-2xl font-semibold text-foreground md:text-3xl">
-          {t("ownerTournamentsPage.title")}
-        </h1>
-        <p className="mt-2 text-sm text-muted-foreground">
-          {t("ownerTournamentsPage.subtitle")}
-        </p>
+    <div className="mx-auto max-w-6xl space-y-6 px-6 py-8">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <h1 className="text-3xl font-bold">{labels.title}</h1>
+          <p className="mt-2 text-sm text-muted-foreground">
+            {labels.subtitle}
+          </p>
+        </div>
+
+        <Button asChild className="w-fit bg-emerald-600 hover:bg-emerald-700">
+          <Link href="/owner/tournaments/create">
+            <PlusCircle className={isArabic ? "ml-2 h-4 w-4" : "mr-2 h-4 w-4"} />
+            {labels.create}
+          </Link>
+        </Button>
       </div>
 
-      <div className="grid gap-8 lg:grid-cols-2">
-        <Card className="border-border bg-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-foreground">
-              <PlusCircle className="h-5 w-5 text-primary" />
-              {t("ownerTournamentsPage.formTitle")}
-            </CardTitle>
-            <CardDescription className="text-muted-foreground">
-              {t("ownerTournamentsPage.formSubtitle")}
-            </CardDescription>
-          </CardHeader>
+      <Card>
+        <CardHeader>
+          <CardTitle>{labels.listTitle}</CardTitle>
+        </CardHeader>
 
-          <CardContent>
-            <form className="space-y-4" onSubmit={handlePublish}>
-              <div className="space-y-2">
-                <Label className="text-foreground">
-                  {language === "ar" ? "عنوان البطولة" : "Tournament title"}
-                </Label>
-                <Input
-                  value={title}
-                  onChange={(e) => setTitle(e.target.value)}
-                  className="border-border bg-background text-foreground"
-                />
-              </div>
+        <CardContent className="space-y-4">
+          {rows.length === 0 ? (
+            <p className="py-10 text-center text-muted-foreground">
+              {labels.empty}
+            </p>
+          ) : (
+            rows.map(({ record, joined }) => {
+              const name =
+                getLocalizedText(record.name, language) ||
+                (isArabic ? "بطولة بدون اسم" : "Unnamed Tournament")
 
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label className="text-foreground">
-                    {t("ownerTournamentsPage.fieldFee")}
-                  </Label>
-                  <Input
-                    type="number"
-                    min={0}
-                    value={fee}
-                    onChange={(e) => setFee(e.target.value)}
-                    className="border-border bg-background text-foreground"
-                  />
-                </div>
+              return (
+                <div
+                  key={record.id}
+                  className="flex flex-col gap-3 rounded-xl border p-4 md:flex-row md:items-center md:justify-between"
+                >
+                  <div className={isArabic ? "text-right" : "text-left"}>
+                    <p className="text-lg font-semibold">{name}</p>
 
-                <div className="space-y-2">
-                  <Label className="text-foreground">
-                    {t("ownerTournamentsPage.fieldTeams")}
-                  </Label>
-                  <Input
-                    type="number"
-                    min={2}
-                    max={64}
-                    value={maxTeams}
-                    onChange={(e) => setMaxTeams(e.target.value)}
-                    className="border-border bg-background text-foreground"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-foreground">
-                  {language === "ar" ? "وصف الجدول" : "Schedule description"}
-                </Label>
-                <Input
-                  value={schedule}
-                  onChange={(e) => setSchedule(e.target.value)}
-                  className="border-border bg-background text-foreground"
-                />
-              </div>
-
-              <div className="grid gap-3 sm:grid-cols-2">
-                <div className="space-y-2">
-                  <Label className="text-foreground">
-                    {language === "ar" ? "تاريخ البداية" : "Start date"}
-                  </Label>
-                  <Input
-                    value={startDate}
-                    onChange={(e) => setStartDate(e.target.value)}
-                    className="border-border bg-background text-foreground"
-                  />
-                </div>
-
-                <div className="space-y-2">
-                  <Label className="text-foreground">
-                    {language === "ar" ? "تاريخ النهاية" : "End date"}
-                  </Label>
-                  <Input
-                    value={endDate}
-                    onChange={(e) => setEndDate(e.target.value)}
-                    className="border-border bg-background text-foreground"
-                  />
-                </div>
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-foreground">
-                  {language === "ar" ? "وصف البطولة" : "Tournament description"}
-                </Label>
-                <Textarea
-                  value={desc}
-                  onChange={(e) => setDesc(e.target.value)}
-                  className="border-border bg-background text-foreground"
-                  rows={3}
-                />
-              </div>
-
-              <Button type="submit" className="w-full sm:w-auto">
-                {t("ownerTournamentsPage.publish")}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border bg-card">
-          <CardHeader>
-            <CardTitle className="text-foreground">
-              {t("ownerTournamentsPage.listTitle")}
-            </CardTitle>
-            <CardDescription className="text-muted-foreground">
-              {t("ownerTournamentsPage.listSubtitle")}
-            </CardDescription>
-          </CardHeader>
-
-          <CardContent className="space-y-3">
-            {rows.length === 0 ? (
-              <p className="text-sm text-muted-foreground">
-                {t("ownerTournamentsPage.empty")}
-              </p>
-            ) : (
-              rows.map(({ record, joined }) => {
-                const name = getLocalizedText(record.name, language)
-
-                const payState = bookings
-                  .filter((b) => b.kind === "tournament" && b.tournament?.id === record.id)
-                  .map((b) => b.status)
-
-                const hasAwaiting = payState.some(
-                  (s) => s === "awaiting_admin_approval" || s === "payment_submitted"
-                )
-
-                return (
-                  <div
-                    key={record.id}
-                    className="flex flex-col gap-2 rounded-lg border border-border bg-card p-4 sm:flex-row sm:items-center sm:justify-between"
-                  >
-                    <div>
-                      <p className="font-medium text-foreground">{name}</p>
-                      <p className="text-xs text-muted-foreground">
-                        {joined}/{record.maxTeams} {t("common.teamsJoined")} ·{" "}
-                        {record.entryFeePerTeam} {t("common.egp")}
-                      </p>
-
-                      <div className="mt-2 flex flex-wrap gap-2">
-                        <Badge variant="outline" className="border-border text-muted-foreground">
-                          {record.status === "ended"
-                            ? t("ownerTournamentsPage.ended")
-                            : joined >= record.maxTeams
-                              ? t("tournaments.full")
-                              : t("tournaments.open")}
-                        </Badge>
-
-                        {hasAwaiting ? (
-                          <Badge className="bg-amber-500/20 text-amber-100">
-                            {t("ownerTournamentsPage.badgePayments")}
-                          </Badge>
-                        ) : null}
-                      </div>
-                    </div>
-
-                    <div className="flex gap-2">
-                      {record.status === "active" && (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="border-border text-foreground hover:bg-muted"
-                          onClick={() => setEndingTournament(record.id)}
-                        >
-                          {t("ownerTournamentsPage.endTournament")}
-                        </Button>
-                      )}
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        className="border-red-500/40 text-red-600 hover:bg-red-500/10"
-                        onClick={() => setDeletingTournament(record.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </Button>
-                    </div>
+                    <p className="text-sm text-muted-foreground">
+                      {joined}/{record.maxTeams} {labels.teams} ·{" "}
+                      {record.entryFeePerTeam} {labels.egp}
+                    </p>
                   </div>
-                )
-              })
-            )}
-          </CardContent>
-        </Card>
-      </div>
 
-      <AlertDialog open={!!endingTournament} onOpenChange={() => setEndingTournament(null)}>
+                  <div className="flex flex-wrap gap-2">
+                    <Button asChild size="sm" className="bg-emerald-600 hover:bg-emerald-700">
+                      <Link href={`/owner/tournaments/${record.id}`}>
+                        {labels.manage}
+                      </Link>
+                    </Button>
+
+                    {record.status === "active" && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setEndingTournament(record.id)}
+                      >
+                        {labels.end}
+                      </Button>
+                    )}
+
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-red-500/40 text-red-600 hover:bg-red-50"
+                      onClick={() => setDeletingTournament(record.id)}
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )
+            })
+          )}
+        </CardContent>
+      </Card>
+
+      <AlertDialog
+        open={!!endingTournament}
+        onOpenChange={(open) => {
+          if (!open) setEndingTournament(null)
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>
-              {t("ownerTournamentsPage.confirmEndTitle")}
-            </AlertDialogTitle>
-            <AlertDialogDescription>
-              {t("ownerTournamentsPage.confirmEndDesc")}
-            </AlertDialogDescription>
+            <AlertDialogTitle>{labels.endTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{labels.endDesc}</AlertDialogDescription>
           </AlertDialogHeader>
 
           <AlertDialogFooter>
-            <AlertDialogCancel>
-              {t("ownerTournamentsPage.cancel")}
-            </AlertDialogCancel>
+            <AlertDialogCancel>{labels.cancel}</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => endingTournament && handleEndTournament(endingTournament)}
+              onClick={() =>
+                endingTournament && handleEndTournament(endingTournament)
+              }
             >
-              {t("ownerTournamentsPage.confirmEnd")}
+              {labels.confirm}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
 
-      <AlertDialog open={!!deletingTournament} onOpenChange={() => setDeletingTournament(null)}>
+      <AlertDialog
+        open={!!deletingTournament}
+        onOpenChange={(open) => {
+          if (!open) setDeletingTournament(null)
+        }}
+      >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>Delete Tournament</AlertDialogTitle>
-            <AlertDialogDescription>
-              Are you sure you want to delete this tournament? This action cannot be undone and will remove all data including registrations and payments.
-            </AlertDialogDescription>
+            <AlertDialogTitle>{labels.deleteTitle}</AlertDialogTitle>
+            <AlertDialogDescription>{labels.deleteDesc}</AlertDialogDescription>
           </AlertDialogHeader>
 
           <AlertDialogFooter>
-            <AlertDialogCancel>
-              {t("ownerTournamentsPage.cancel")}
-            </AlertDialogCancel>
+            <AlertDialogCancel>{labels.cancel}</AlertDialogCancel>
             <AlertDialogAction
-              onClick={() => deletingTournament && handleDeleteTournament(deletingTournament)}
               className="bg-red-600 hover:bg-red-700"
+              onClick={() =>
+                deletingTournament &&
+                handleDeleteTournament(deletingTournament)
+              }
             >
-              Delete Tournament
+              {labels.delete}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

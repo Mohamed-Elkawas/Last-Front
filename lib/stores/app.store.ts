@@ -162,6 +162,7 @@ export type AppStoreState = {
     >,
   ) => string
   endTournament: (tournamentId: string) => void
+  completeTournament: (tournamentId: string) => void
 
   joinTournament: (input: CreateTournamentBookingPayload) => string
   updateBookingPayment: (
@@ -511,6 +512,15 @@ export const useAppStore = create<AppStoreState>()(
         }))
       },
 
+      completeTournament: (tournamentId: string) => {
+        set((state: AppStoreState) => ({
+          tournaments: state.tournaments.map((tournament) =>
+            tournament.id === tournamentId
+              ? { ...tournament, status: "completed" as const }
+              : tournament,
+          ),
+        }))
+      },
       joinTournament: (input) => get().createTournamentBooking(input),
 
       updateBookingPayment: (bookingId, proof, options) =>

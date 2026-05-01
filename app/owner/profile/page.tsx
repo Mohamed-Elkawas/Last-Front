@@ -1,45 +1,118 @@
 "use client"
 
-import { useState } from "react"
-import Image from "next/image"
+import { useMemo, useState } from "react"
+import { useRouter } from "next/navigation"
 import {
   Building2,
+  CheckCircle2,
+  Clock3,
   CreditCard,
+  Headphones,
+  LockKeyhole,
+  Mail,
+  MapPin,
+  Pencil,
   Phone,
+  Save,
+  Settings,
+  ShieldCheck,
   UserRound,
-  Upload,
-  Camera,
+  X,
 } from "lucide-react"
 
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Textarea } from "@/components/ui/textarea"
-import { Separator } from "@/components/ui/separator"
-import { useAppTranslations } from "@/hooks/use-app-translations"
 import { useOwnerProfile } from "@/hooks/use-owner-profile"
+import { useAppTranslations } from "@/hooks/use-app-translations"
 
-const FALLBACK_COVER_IMAGE =
-  "https://images.unsplash.com/photo-1459865264687-595d652de67e?q=80&w=1600&auto=format&fit=crop"
+type Lang = "ar" | "en"
 
-const FALLBACK_AVATAR_IMAGE =
-  "https://images.unsplash.com/photo-1526232761682-d26e03ac148e?q=80&w=400&auto=format&fit=crop"
+type EditableField =
+  | "fullName"
+  | "email"
+  | "phone"
+  | "playgroundName"
+  | "location"
+  | "venuePhone"
+  | "workingHours"
+  | "pitchTypes"
+
+const copy = {
+  en: {
+    ownerControl: "Owner Control",
+    title: "Venue Profile",
+    saved: "Saved",
+    saveChanges: "Save Changes",
+    ownerInfo: "Owner Information",
+    businessSettings: "Business Settings",
+    quickActions: "Quick Actions",
+    fullName: "Full Name",
+    email: "Email Address",
+    phone: "Phone",
+    venueName: "Venue Name",
+    location: "Location",
+    venuePhone: "Venue Phone",
+    workingHours: "Working Hours",
+    pitchTypes: "Pitch Types",
+    enterFullName: "Enter owner full name",
+    enterEmail: "Enter owner email",
+    enterPhone: "Enter owner phone",
+    enterVenueName: "Enter venue name",
+    enterLocation: "Enter venue location",
+    enterVenuePhone: "Enter venue phone",
+    exampleHours: "Example: 08:00 - 02:00",
+    examplePitchTypes: "Example: 5-A-SIDE, 7-A-SIDE",
+    payouts: "Payouts",
+    support: "Support",
+    security: "Security",
+    supportCenter: "Support Center",
+    supportText: "Connect support tickets or live chat here later.",
+    accountSecurity: "Account Security",
+    securityText: "Connect password change or security settings here later.",
+    edit: "Edit",
+    cancel: "Cancel",
+  },
+  ar: {
+    ownerControl: "تحكم المالك",
+    title: "ملف الملعب",
+    saved: "تم الحفظ",
+    saveChanges: "حفظ التغييرات",
+    ownerInfo: "بيانات المالك",
+    businessSettings: "إعدادات النشاط",
+    quickActions: "إجراءات سريعة",
+    fullName: "الاسم بالكامل",
+    email: "البريد الإلكتروني",
+    phone: "رقم الهاتف",
+    venueName: "اسم الملعب",
+    location: "الموقع",
+    venuePhone: "هاتف الملعب",
+    workingHours: "مواعيد العمل",
+    pitchTypes: "أنواع الملاعب",
+    enterFullName: "اكتب اسم المالك بالكامل",
+    enterEmail: "اكتب البريد الإلكتروني",
+    enterPhone: "اكتب رقم الهاتف",
+    enterVenueName: "اكتب اسم الملعب",
+    enterLocation: "اكتب موقع الملعب",
+    enterVenuePhone: "اكتب هاتف الملعب",
+    exampleHours: "مثال: 08:00 - 02:00",
+    examplePitchTypes: "مثال: 5-A-SIDE, 7-A-SIDE",
+    payouts: "المدفوعات",
+    support: "الدعم",
+    security: "الأمان",
+    supportCenter: "مركز الدعم",
+    supportText: "اربط هنا لاحقًا تذاكر الدعم أو الشات من الباك.",
+    accountSecurity: "أمان الحساب",
+    securityText: "اربط هنا لاحقًا تغيير كلمة المرور أو إعدادات الأمان.",
+    edit: "تعديل",
+    cancel: "إلغاء",
+  },
+} as const
 
 function asText(value: unknown): string {
   if (typeof value === "string") return value
 
-  if (
-    value &&
-    typeof value === "object" &&
-    ("ar" in value || "en" in value)
-  ) {
+  if (value && typeof value === "object" && ("ar" in value || "en" in value)) {
     const localized = value as { ar?: string; en?: string }
     return localized.ar || localized.en || ""
   }
@@ -47,350 +120,420 @@ function asText(value: unknown): string {
   return ""
 }
 
-function safeImage(src: unknown, fallback: string): string {
-  const value = asText(src).trim()
-  return value.length > 0 ? value : fallback
+function toLocalized(value: string) {
+  return { ar: value, en: value }
+}
+
+function InfoInput({
+  icon,
+  label,
+  value,
+  placeholder,
+  isEditing,
+  onEdit,
+  onCancel,
+  onChange,
+  dir,
+  editText,
+  cancelText,
+}: {
+  icon: React.ReactNode
+  label: string
+  value: string
+  placeholder: string
+  isEditing: boolean
+  onEdit: () => void
+  onCancel: () => void
+  onChange: (value: string) => void
+  dir: "rtl" | "ltr"
+  editText: string
+  cancelText: string
+}) {
+  return (
+    <div className="flex items-center gap-4 rounded-2xl bg-emerald-50/70 p-4">
+      <button
+        type="button"
+        onClick={isEditing ? onCancel : onEdit}
+        title={isEditing ? cancelText : editText}
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl text-emerald-700 transition hover:bg-emerald-100"
+      >
+        {isEditing ? <X className="h-5 w-5" /> : icon}
+      </button>
+
+      <div className="min-w-0 flex-1">
+        <Label className="text-[11px] font-bold uppercase tracking-wide text-muted-foreground">
+          {label}
+        </Label>
+
+        <Input
+          dir={dir}
+          value={value}
+          readOnly={!isEditing}
+          onChange={(e) => onChange(e.target.value)}
+          placeholder={placeholder}
+          className={`mt-1 h-auto border-0 bg-transparent p-0 text-base font-bold shadow-none focus-visible:ring-0 ${
+            isEditing
+              ? "cursor-text text-foreground"
+              : "cursor-default text-foreground"
+          }`}
+        />
+      </div>
+
+      {!isEditing && (
+        <Pencil className="h-4 w-4 shrink-0 text-muted-foreground" />
+      )}
+    </div>
+  )
+}
+
+function QuickAction({
+  icon,
+  label,
+  onClick,
+}: {
+  icon: React.ReactNode
+  label: string
+  onClick: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col items-center gap-3 rounded-2xl p-4 transition hover:bg-muted active:scale-[0.98]"
+    >
+      <span className="flex h-14 w-14 items-center justify-center rounded-full bg-emerald-50 text-emerald-600">
+        {icon}
+      </span>
+
+      <span className="text-sm font-bold text-foreground">{label}</span>
+    </button>
+  )
 }
 
 export default function OwnerProfilePage() {
-  const { t, hasHydrated } = useAppTranslations()
-  const { personal, venue, setPersonal, setVenue } = useOwnerProfile()
+  const router = useRouter()
+  const { language } = useAppTranslations()
+  const { personal, venue, hasHydrated, setPersonal, setVenue } =
+    useOwnerProfile()
 
-  const [coverFile, setCoverFile] = useState<File | null>(null)
-  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const lang: Lang = language === "ar" ? "ar" : "en"
+  const text = copy[lang]
+  const dir = lang === "ar" ? "rtl" : "ltr"
 
-  const coverImageSrc = safeImage(venue.coverImageUrl, FALLBACK_COVER_IMAGE)
-  const avatarImageSrc = safeImage(venue.avatarUrl, FALLBACK_AVATAR_IMAGE)
+  const [saved, setSaved] = useState(false)
+  const [activePanel, setActivePanel] = useState<"support" | "security" | null>(
+    null,
+  )
+  const [editingField, setEditingField] = useState<EditableField | null>(null)
 
-  const handleCoverChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
+  const [draft, setDraft] = useState({
+    fullName: "",
+    email: "",
+    phone: "",
+    playgroundName: "",
+    location: "",
+    venuePhone: "",
+    workingHours: "",
+    pitchTypes: "",
+  })
 
-    setCoverFile(file)
-    setVenue({ coverImageUrl: URL.createObjectURL(file) })
-  }
-
-  const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0]
-    if (!file) return
-
-    setAvatarFile(file)
-    setVenue({ avatarUrl: URL.createObjectURL(file) })
-  }
+  const currentValues = useMemo(
+    () => ({
+      fullName: personal.fullName || "",
+      email: personal.email || "",
+      phone: personal.phone || "",
+      playgroundName: asText(venue.playgroundName),
+      location: asText(venue.location),
+      venuePhone: asText(venue.venuePhone),
+      workingHours: asText(venue.workingHours),
+      pitchTypes: asText(venue.pitchTypes),
+    }),
+    [personal, venue],
+  )
 
   if (!hasHydrated) return null
 
-  return (
-    <div className="mx-auto max-w-5xl space-y-8">
-      <div className="relative overflow-hidden rounded-2xl border border-border bg-card">
-        <div className="relative h-44 w-full md:h-52">
-          <Image
-            src={coverImageSrc}
-            alt={asText(venue.playgroundName) || "Playground cover"}
-            fill
-            className="object-cover"
-            priority
-            unoptimized
-          />
+  function startEdit(field: EditableField) {
+    setDraft(currentValues)
+    setEditingField(field)
+  }
 
-          <div className="absolute inset-0 bg-gradient-to-t from-background/80 via-background/20 to-transparent" />
+  function cancelEdit() {
+    setDraft(currentValues)
+    setEditingField(null)
+  }
+
+  function markSaved() {
+    setPersonal({
+      fullName: draft.fullName,
+      email: draft.email,
+      phone: draft.phone,
+    })
+
+    setVenue({
+      playgroundName: toLocalized(draft.playgroundName),
+      location: toLocalized(draft.location),
+      venuePhone: draft.venuePhone,
+      workingHours: draft.workingHours,
+      pitchTypes: draft.pitchTypes,
+    })
+
+    setEditingField(null)
+    setSaved(true)
+    window.setTimeout(() => setSaved(false), 1200)
+  }
+
+  function getValue(field: EditableField) {
+    return editingField === field ? draft[field] : currentValues[field]
+  }
+
+  function setDraftValue(field: EditableField, value: string) {
+    setDraft((current) => ({
+      ...current,
+      [field]: value,
+    }))
+  }
+
+  const pitchTypeList = getValue("pitchTypes")
+    .split(",")
+    .map((item) => item.trim())
+    .filter(Boolean)
+
+  return (
+    <div dir={dir} className="mx-auto w-full max-w-6xl space-y-6">
+      <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+        <div>
+          <p className="text-sm font-semibold text-emerald-600">
+            {text.ownerControl}
+          </p>
+          <h1 className="text-3xl font-black tracking-tight">{text.title}</h1>
+        </div>
+
+        <div className="flex items-center gap-3">
+          {saved && (
+            <div className="flex items-center gap-2 rounded-xl bg-emerald-50 px-4 py-2 text-sm font-bold text-emerald-700">
+              <CheckCircle2 className="h-4 w-4" />
+              {text.saved}
+            </div>
+          )}
 
           <Button
-            variant="secondary"
-            size="sm"
-            className="absolute right-4 top-4 border-white/20 bg-white/20 text-white hover:bg-white/30"
-            onClick={() => document.getElementById("cover-upload")?.click()}
             type="button"
+            onClick={markSaved}
+            disabled={!editingField}
+            className="rounded-xl bg-emerald-600 hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
           >
-            <Upload className="mr-2 h-4 w-4" />
-            {t("ownerProfilePage.changeCover")}
+            <Save className="h-4 w-4" />
+            {text.saveChanges}
           </Button>
+        </div>
+      </div>
 
-          <input
-            id="cover-upload"
-            type="file"
-            accept="image/*"
-            className="hidden"
-            onChange={handleCoverChange}
+      <div className="grid gap-6 xl:grid-cols-2">
+        <section className="rounded-3xl border bg-white p-6 shadow-sm">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="text-2xl font-black">{text.ownerInfo}</h2>
+            <UserRound className="h-6 w-6 text-emerald-600" />
+          </div>
+
+          <div className="space-y-4">
+            <InfoInput
+              icon={<UserRound className="h-5 w-5" />}
+              label={text.fullName}
+              value={getValue("fullName")}
+              placeholder={text.enterFullName}
+              isEditing={editingField === "fullName"}
+              onEdit={() => startEdit("fullName")}
+              onCancel={cancelEdit}
+              onChange={(value) => setDraftValue("fullName", value)}
+              dir={dir}
+              editText={text.edit}
+              cancelText={text.cancel}
+            />
+
+            <InfoInput
+              icon={<Mail className="h-5 w-5" />}
+              label={text.email}
+              value={getValue("email")}
+              placeholder={text.enterEmail}
+              isEditing={editingField === "email"}
+              onEdit={() => startEdit("email")}
+              onCancel={cancelEdit}
+              onChange={(value) => setDraftValue("email", value)}
+              dir="ltr"
+              editText={text.edit}
+              cancelText={text.cancel}
+            />
+
+            <InfoInput
+              icon={<Phone className="h-5 w-5" />}
+              label={text.phone}
+              value={getValue("phone")}
+              placeholder={text.enterPhone}
+              isEditing={editingField === "phone"}
+              onEdit={() => startEdit("phone")}
+              onCancel={cancelEdit}
+              onChange={(value) => setDraftValue("phone", value)}
+              dir="ltr"
+              editText={text.edit}
+              cancelText={text.cancel}
+            />
+          </div>
+        </section>
+
+        <section className="rounded-3xl border bg-white p-6 shadow-sm">
+          <div className="mb-5 flex items-center justify-between">
+            <h2 className="text-2xl font-black">{text.businessSettings}</h2>
+            <Settings className="h-7 w-7 text-emerald-600" />
+          </div>
+
+          <div className="space-y-5">
+            <InfoInput
+              icon={<Building2 className="h-5 w-5" />}
+              label={text.venueName}
+              value={getValue("playgroundName")}
+              placeholder={text.enterVenueName}
+              isEditing={editingField === "playgroundName"}
+              onEdit={() => startEdit("playgroundName")}
+              onCancel={cancelEdit}
+              onChange={(value) => setDraftValue("playgroundName", value)}
+              dir={dir}
+              editText={text.edit}
+              cancelText={text.cancel}
+            />
+
+            <InfoInput
+              icon={<MapPin className="h-5 w-5" />}
+              label={text.location}
+              value={getValue("location")}
+              placeholder={text.enterLocation}
+              isEditing={editingField === "location"}
+              onEdit={() => startEdit("location")}
+              onCancel={cancelEdit}
+              onChange={(value) => setDraftValue("location", value)}
+              dir={dir}
+              editText={text.edit}
+              cancelText={text.cancel}
+            />
+
+            <InfoInput
+              icon={<Phone className="h-5 w-5" />}
+              label={text.venuePhone}
+              value={getValue("venuePhone")}
+              placeholder={text.enterVenuePhone}
+              isEditing={editingField === "venuePhone"}
+              onEdit={() => startEdit("venuePhone")}
+              onCancel={cancelEdit}
+              onChange={(value) => setDraftValue("venuePhone", value)}
+              dir="ltr"
+              editText={text.edit}
+              cancelText={text.cancel}
+            />
+
+            <InfoInput
+              icon={<Clock3 className="h-5 w-5" />}
+              label={text.workingHours}
+              value={getValue("workingHours")}
+              placeholder={text.exampleHours}
+              isEditing={editingField === "workingHours"}
+              onEdit={() => startEdit("workingHours")}
+              onCancel={cancelEdit}
+              onChange={(value) => setDraftValue("workingHours", value)}
+              dir="ltr"
+              editText={text.edit}
+              cancelText={text.cancel}
+            />
+
+            <InfoInput
+              icon={<Building2 className="h-5 w-5" />}
+              label={text.pitchTypes}
+              value={getValue("pitchTypes")}
+              placeholder={text.examplePitchTypes}
+              isEditing={editingField === "pitchTypes"}
+              onEdit={() => startEdit("pitchTypes")}
+              onCancel={cancelEdit}
+              onChange={(value) => setDraftValue("pitchTypes", value)}
+              dir="ltr"
+              editText={text.edit}
+              cancelText={text.cancel}
+            />
+
+            {pitchTypeList.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {pitchTypeList.map((type) => (
+                  <span
+                    key={type}
+                    className="rounded-full bg-indigo-100 px-4 py-1.5 text-xs font-black text-slate-700"
+                  >
+                    {type}
+                  </span>
+                ))}
+              </div>
+            )}
+          </div>
+        </section>
+      </div>
+
+      <section className="rounded-3xl border bg-white p-6 shadow-sm">
+        <h2 className="mb-6 text-2xl font-black">{text.quickActions}</h2>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+          <QuickAction
+            icon={<CreditCard className="h-6 w-6" />}
+            label={text.payouts}
+            onClick={() => router.push("/owner/operations")}
+          />
+
+          <QuickAction
+            icon={<Headphones className="h-6 w-6" />}
+            label={text.support}
+            onClick={() => setActivePanel("support")}
+          />
+
+          <QuickAction
+            icon={<ShieldCheck className="h-6 w-6" />}
+            label={text.security}
+            onClick={() => setActivePanel("security")}
           />
         </div>
+      </section>
 
-        <div className="relative flex flex-col gap-4 px-6 pb-6 md:flex-row md:items-end md:justify-between">
-          <div className="-mt-14 flex items-end gap-4">
-            <div className="relative h-24 w-24 overflow-hidden rounded-2xl border-4 border-background bg-muted shadow-xl">
-              <Image
-                src={avatarImageSrc}
-                alt={personal.fullName || "Owner avatar"}
-                fill
-                className="object-cover"
-                unoptimized
-              />
+      {activePanel && (
+        <section className="rounded-3xl border bg-white p-6 shadow-sm">
+          <div className="mb-4 flex items-center justify-between">
+            <h2 className="text-2xl font-black">
+              {activePanel === "support" ? text.support : text.security}
+            </h2>
 
-              <Button
-                variant="secondary"
-                size="sm"
-                className="absolute bottom-0 right-0 h-8 w-8 rounded-full border-white/20 bg-white/20 p-0 text-white hover:bg-white/30"
-                onClick={() =>
-                  document.getElementById("avatar-upload")?.click()
-                }
-                type="button"
-              >
-                <Camera className="h-4 w-4" />
-              </Button>
-
-              <input
-                id="avatar-upload"
-                type="file"
-                accept="image/*"
-                className="hidden"
-                onChange={handleAvatarChange}
-              />
-            </div>
-
-            <div className="pb-1">
-              <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-primary">
-                {t("ownerProfilePage.kicker")}
-              </p>
-
-              <h1 className="text-2xl font-semibold text-foreground">
-                {personal.fullName || "Owner"}
-              </h1>
-
-              <p className="text-sm text-muted-foreground">
-                {asText(venue.playgroundName) || "Playground"}
-              </p>
-            </div>
+            <button
+              type="button"
+              onClick={() => setActivePanel(null)}
+              className="flex h-10 w-10 items-center justify-center rounded-xl bg-muted transition hover:bg-muted/80"
+            >
+              <X className="h-5 w-5" />
+            </button>
           </div>
-        </div>
-      </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="border-border bg-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-foreground">
-              <UserRound className="h-5 w-5 text-primary" />
-              {t("ownerProfilePage.ownerSection")}
-            </CardTitle>
-
-            <CardDescription className="text-muted-foreground">
-              {t("ownerProfilePage.ownerSectionDesc")}
-            </CardDescription>
-          </CardHeader>
-
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-foreground">
-                {t("ownerProfilePage.fullName")}
-              </Label>
-              <Input
-                value={personal.fullName || ""}
-                onChange={(e) => setPersonal({ fullName: e.target.value })}
-                className="border-border bg-background text-foreground"
-              />
+          {activePanel === "support" ? (
+            <div className="rounded-2xl bg-emerald-50/70 p-4">
+              <p className="font-bold">{text.supportCenter}</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {text.supportText}
+              </p>
             </div>
-
-            <div className="space-y-2">
-              <Label className="text-foreground">
-                {t("ownerProfilePage.email")}
-              </Label>
-              <Input
-                type="email"
-                value={personal.email || ""}
-                onChange={(e) => setPersonal({ email: e.target.value })}
-                className="border-border bg-background text-foreground"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-foreground">
-                {t("ownerProfilePage.phone")}
-              </Label>
-              <Input
-                value={personal.phone || ""}
-                onChange={(e) => setPersonal({ phone: e.target.value })}
-                className="border-border bg-background text-foreground"
-              />
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-border bg-card">
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2 text-foreground">
-              <Building2 className="h-5 w-5 text-primary" />
-              {t("ownerProfilePage.venueSection")}
-            </CardTitle>
-
-            <CardDescription className="text-muted-foreground">
-              {t("ownerProfilePage.venueSectionDesc")}
-            </CardDescription>
-          </CardHeader>
-
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-foreground">
-                {t("ownerProfilePage.playgroundName")}
-              </Label>
-              <Input
-                value={asText(venue.playgroundName)}
-                onChange={(e) =>
-                  setVenue({
-                    playgroundName: {
-                      ar: e.target.value,
-                      en: e.target.value,
-                    },
-                  })
-                }
-                className="border-border bg-background text-foreground"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-foreground">
-                {t("ownerProfilePage.location")}
-              </Label>
-              <Input
-                value={asText(venue.location)}
-                onChange={(e) =>
-                  setVenue({
-                    location: {
-                      ar: e.target.value,
-                      en: e.target.value,
-                    },
-                  })
-                } className="border-border bg-background text-foreground"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2 text-foreground">
-                <Phone className="h-3.5 w-3.5" />
-                {t("ownerProfilePage.venuePhone")}
-              </Label>
-              <Input
-                value={asText(venue.venuePhone)}
-                onChange={(e) => setVenue({ venuePhone: e.target.value })}
-                className="border-border bg-background text-foreground"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-foreground">
-                {t("ownerProfilePage.workingHours")}
-              </Label>
-              <Input
-                value={asText(venue.workingHours)}
-                onChange={(e) => setVenue({ workingHours: e.target.value })}
-                className="border-border bg-background text-foreground"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-foreground">
-                {t("ownerProfilePage.pitchTypes")}
-              </Label>
-              <Input
-                value={asText(venue.pitchTypes)}
-                onChange={(e) => setVenue({ pitchTypes: e.target.value })}
-                className="border-border bg-background text-foreground"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label className="text-foreground">
-                {t("ownerProfilePage.about")}
-              </Label>
-              <Textarea
-                value={asText(venue.about)}
-                onChange={(e) =>
-                  setVenue({
-                    about: {
-                      ar: e.target.value,
-                      en: e.target.value,
-                    },
-                  })
-                } className="border-border bg-background text-foreground"
-                rows={4}
-              />
-            </div>
-
-            <Separator />
-
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2 text-foreground">
-                <CreditCard className="h-3.5 w-3.5" />
-                {t("ownerProfilePage.paymentMethods")}
-              </Label>
-              <Textarea
-                value={asText(venue.paymentMethodsNote)}
-                onChange={(e) =>
-                  setVenue({ paymentMethodsNote: e.target.value })
-                }
-                className="border-border bg-background text-foreground"
-                rows={3}
-              />
-            </div>
-
-            <div className="grid gap-3 sm:grid-cols-2">
-              <div className="space-y-2">
-                <Label className="text-foreground">
-                  {t("ownerProfilePage.coverUrl")}
-                </Label>
-                <Input
-                  value={asText(venue.coverImageUrl)}
-                  onChange={(e) =>
-                    setVenue({ coverImageUrl: e.target.value })
-                  }
-                  className="border-border bg-background text-foreground"
-                />
+          ) : (
+            <div className="rounded-2xl bg-emerald-50/70 p-4">
+              <div className="flex items-center gap-3">
+                <LockKeyhole className="h-5 w-5 text-emerald-600" />
+                <p className="font-bold">{text.accountSecurity}</p>
               </div>
-
-              <div className="space-y-2">
-                <Label className="text-foreground">
-                  {t("ownerProfilePage.avatarUrl")}
-                </Label>
-                <Input
-                  value={asText(venue.avatarUrl)}
-                  onChange={(e) => setVenue({ avatarUrl: e.target.value })}
-                  className="border-border bg-background text-foreground"
-                />
-              </div>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {text.securityText}
+              </p>
             </div>
-
-            <p className="text-xs text-muted-foreground">
-              {t("ownerProfilePage.savedHint")}
-            </p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card className="border-border bg-card">
-        <CardHeader>
-          <CardTitle className="text-foreground">
-            {t("ownerProfilePage.previewTitle")}
-          </CardTitle>
-
-          <CardDescription className="text-muted-foreground">
-            {t("ownerProfilePage.previewSubtitle")}
-          </CardDescription>
-        </CardHeader>
-
-        <CardContent className="space-y-2 text-sm text-muted-foreground">
-          <p>
-            <span className="text-foreground">
-              {t("ownerProfilePage.previewLocation")}:
-            </span>{" "}
-            {asText(venue.location) || "-"}
-          </p>
-
-          <p>
-            <span className="text-foreground">
-              {t("ownerProfilePage.previewAbout")}:
-            </span>{" "}
-            {asText(venue.about) || "-"}
-          </p>
-        </CardContent>
-      </Card>
+          )}
+        </section>
+      )}
     </div>
   )
 }

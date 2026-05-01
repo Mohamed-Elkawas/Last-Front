@@ -2,8 +2,9 @@
 
 import { Suspense, useEffect, useMemo, useState } from "react"
 import Link from "next/link"
-import { useSearchParams, useParams, useRouter } from "next/navigation"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
 import { ArrowLeft, Clock, Upload } from "lucide-react"
+
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -17,11 +18,44 @@ import {
   sweepBookingExpiry,
 } from "@/lib/services/bookings.service"
 
+type PaymentMethod = "vodafone" | "instapay"
+
+function formatSlots(slots: unknown): string {
+  if (!slots) return "-"
+
+  const slotList = Array.isArray(slots) ? slots : [slots]
+
+  const formatted = slotList
+    .map((slot) => {
+      if (typeof slot === "string") return slot
+
+      if (slot && typeof slot === "object") {
+        const currentSlot = slot as {
+          startTime?: string
+          endTime?: string
+        }
+
+        if (currentSlot.startTime && currentSlot.endTime) {
+          return `${currentSlot.startTime} - ${currentSlot.endTime}`
+        }
+
+        return currentSlot.startTime || currentSlot.endTime || ""
+      }
+
+      return ""
+    })
+    .filter(Boolean)
+
+  return formatted.length ? formatted.join(", ") : "-"
+}
+
 function PlaygroundPaymentContent() {
   const { language } = useTranslate()
   const searchParams = useSearchParams()
   const params = useParams()
   const router = useRouter()
+
+  const { isAuthenticated, canProceed } = useRequireAuth()
 
   const isArabic = language === "ar"
 
@@ -72,15 +106,7 @@ function PlaygroundPaymentContent() {
         ? params.id[0]
         : undefined
 
-  const { isAuthenticated, canProceed } = useRequireAuth()
-  const bookingId = searchParams.get("bookingId") || ""
-
-  const { booking, hasHydrated } = useBookingById(
-    bookingId,
-    "playground",
-    playgroundId,
-  )
-
+  const [bookingId, setBookingId] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [now, setNow] = useState(Date.now())
   const [showAuthDialog, setShowAuthDialog] = useState(() => !isAuthenticated)
@@ -88,42 +114,32 @@ function PlaygroundPaymentContent() {
   const [payerName, setPayerName] = useState("")
   const [paymentNumber, setPaymentNumber] = useState("")
   const [file, setFile] = useState<File | null>(null)
-  const [paymentMethod, setPaymentMethod] = useState<"vodafone" | "instapay">(
-    "vodafone",
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>("vodafone")
+
+  useEffect(() => {
+    const id = searchParams.get("bookingId") || ""
+    setBookingId(id)
+  }, [searchParams])
+
+  const shouldLoadBooking = Boolean(bookingId)
+
+  const { booking, hasHydrated } = useBookingById(
+    shouldLoadBooking ? bookingId : undefined,
+    "playground",
+    playgroundId,
   )
-
-  useEffect(() => {
-    sweepBookingExpiry()
-
-    const interval = setInterval(() => {
-      setNow(Date.now())
-      sweepBookingExpiry()
-    }, 1000)
-
-    return () => clearInterval(interval)
-  }, [])
-
-  useEffect(() => {
-    if (!isAuthenticated) {
-      if (playgroundId) {
-        canProceed("playground_book", { playgroundId })
-      }
-
-      setShowAuthDialog(true)
-    }
-  }, [canProceed, isAuthenticated, playgroundId])
-
-  useEffect(() => {
-    if (booking?.paymentMethod) {
-      setPaymentMethod(booking.paymentMethod)
-    }
-  }, [booking?.paymentMethod])
 
   const remainingMs = booking?.expiresAt
     ? Math.max(booking.expiresAt - now, 0)
     : 0
 
-  const isExpired = booking?.status === "expired" || remainingMs <= 0
+  const isExpired =
+    Boolean(booking) &&
+    (booking?.status === "expired" || remainingMs <= 0)
+
+  const isInvalidBooking =
+    Boolean(booking) &&
+    (booking?.status !== "pending_payment" || isExpired)
 
   const formattedTime = useMemo(() => {
     const totalSeconds = Math.floor(remainingMs / 1000)
@@ -136,21 +152,48 @@ function PlaygroundPaymentContent() {
     )}`
   }, [remainingMs])
 
-  if (!hasHydrated) {
-    return <AppShell>{labels.loading}</AppShell>
-  }
+  useEffect(() => {
+    sweepBookingExpiry()
 
-  if (!booking) {
-    return <AppShell>{labels.noBooking}</AppShell>
-  }
+    const interval = window.setInterval(() => {
+      setNow(Date.now())
+      sweepBookingExpiry()
+    }, 1000)
 
-  if (booking.status !== "pending_payment" || isExpired) {
-    router.push("/bookings")
-    return null
-  }
+    return () => window.clearInterval(interval)
+  }, [])
+
+  useEffect(() => {
+    if (!isAuthenticated) {
+      if (playgroundId) {
+        canProceed("playground_book", { playgroundId })
+      }
+
+      setShowAuthDialog(true)
+      return
+    }
+
+    setShowAuthDialog(false)
+  }, [canProceed, isAuthenticated, playgroundId])
+
+  useEffect(() => {
+    if (booking?.paymentMethod) {
+      setPaymentMethod(booking.paymentMethod)
+    }
+  }, [booking?.paymentMethod])
+
+  useEffect(() => {
+    if (!hasHydrated || !booking) return
+
+    if (isInvalidBooking) {
+      router.replace("/bookings")
+    }
+  }, [hasHydrated, booking?.id, isInvalidBooking, router])
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!booking || isInvalidBooking) return
 
     const cleanedName = payerName.trim()
     const cleanedNumber = paymentNumber.trim()
@@ -186,6 +229,18 @@ function PlaygroundPaymentContent() {
     }
   }
 
+  if (!hasHydrated || !shouldLoadBooking) {
+    return <AppShell>{labels.loading}</AppShell>
+  }
+
+  if (!booking) {
+    return <AppShell>{labels.noBooking}</AppShell>
+  }
+
+  if (isInvalidBooking) {
+    return null
+  }
+
   return (
     <AppShell>
       <div className="mx-auto max-w-3xl px-6 py-8">
@@ -217,9 +272,7 @@ function PlaygroundPaymentContent() {
                   </p>
 
                   <p className="mt-1 font-semibold">
-                    {booking.paymentMethod === "vodafone"
-                      ? "Vodafone Cash"
-                      : "Instapay"}
+                    {paymentMethod === "vodafone" ? "Vodafone Cash" : "Instapay"}
                   </p>
                 </div>
 
@@ -295,24 +348,21 @@ function PlaygroundPaymentContent() {
               <p>
                 {labels.player}: {booking.playerDisplayName || "-"}
               </p>
+
               <p>
                 {labels.phone}: {booking.playerPhone || "-"}
               </p>
+
               <p>
                 {labels.email}: {booking.playerEmail || "-"}
               </p>
 
               <hr />
 
-              <p>{booking.playground?.name[language] || "-"}</p>
-              <p>{booking.playground?.location[language] || "-"}</p>
+              <p>{booking.playground?.name?.[language] || "-"}</p>
+              <p>{booking.playground?.location?.[language] || "-"}</p>
               <p>{booking.playground?.dateLabel || "-"}</p>
-
-              <p>
-                {booking.playground?.slots
-                  ?.map((slot) => `${slot.startTime} - ${slot.endTime}`)
-                  .join(", ") || "-"}
-              </p>
+              <p>{formatSlots(booking.playground?.slots)}</p>
 
               <p>
                 {labels.total}: {booking.playground?.total ?? 0} {labels.egp}

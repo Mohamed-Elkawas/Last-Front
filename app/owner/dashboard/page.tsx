@@ -1,12 +1,27 @@
 "use client"
 
+import Link from "next/link"
+import type { ComponentType } from "react"
 import { useMemo, useState } from "react"
-import { BellRing, CalendarClock, CalendarDays, CircleAlert } from "lucide-react"
+import {
+  Banknote,
+  BellRing,
+  CalendarClock,
+  CalendarDays,
+  CircleAlert,
+  Clock,
+  CreditCard,
+  MapPin,
+  Percent,
+  RotateCcw,
+  UserRound,
+  Users,
+} from "lucide-react"
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { useAppTranslations } from "@/hooks/use-app-translations"
 import { ActionCenterList } from "@/features/backoffice/shared/components/action-center-list"
-import { DataTableShell } from "@/features/backoffice/shared/components/data-table-shell"
 import { EmptyState } from "@/features/backoffice/shared/components/empty-state"
 import { LoadingState } from "@/features/backoffice/shared/components/loading-state"
 import { useOwnerBookings } from "@/features/backoffice/owner/hooks/use-owner-bookings"
@@ -24,6 +39,12 @@ type ChartPoint = {
 type HourPoint = {
   hour: number
   count: number
+}
+
+function safeText(value: string | undefined | null, fallback: string) {
+  if (!value) return fallback
+  if (value.includes(".")) return fallback
+  return value
 }
 
 function PageHeader({
@@ -56,8 +77,37 @@ function formatDateTimeRange(startTime: string, endTime: string) {
   })}`
 }
 
+function formatShortTimeRange(startTime: string, endTime: string) {
+  const start = new Date(startTime)
+  const end = new Date(endTime)
+
+  return `${start.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  })} - ${end.toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  })}`
+}
+
 function isUpcomingVisibleStatus(status?: string) {
   return status === "confirmed"
+}
+
+function isRevenueStatus(status?: string) {
+  return status === "confirmed" || status === "completed"
+}
+
+function isApprovedRevenueBooking(booking: {
+  bookingStatus?: string
+  paymentStatus?: string
+  amount?: number
+}) {
+  return (
+    isRevenueStatus(booking.bookingStatus) &&
+    (booking.paymentStatus === "captured" || booking.paymentStatus === "approved") &&
+    Number(booking.amount) > 0
+  )
 }
 
 function getStartOfDay(date: Date) {
@@ -97,9 +147,6 @@ function getPeriodRange(period: Period) {
   return { start, end }
 }
 
-function isRevenueStatus(status?: string) {
-  return status === "confirmed"
-}
 function getPlayerKey(booking: { customerName?: string; id?: string }) {
   return booking.customerName?.trim().toLowerCase() || booking.id || "unknown-player"
 }
@@ -138,12 +185,10 @@ function getRevenueBucket(date: Date, period: Period, locale: string) {
 
 function buildRevenueTrendPoints<
   T extends { startTime: string; amount: number; bookingStatus?: string },
->(periodBookings: T[], period: Period, locale: string) {
+>(revenueBookings: T[], period: Period, locale: string) {
   const grouped = new Map<string, ChartPoint>()
 
-  periodBookings.forEach((booking) => {
-    if (!isRevenueStatus(booking.bookingStatus)) return
-
+  revenueBookings.forEach((booking) => {
     const amount = Number(booking.amount) || 0
     if (amount <= 0) return
 
@@ -180,27 +225,61 @@ function getDashboardLabels(isArabic: boolean) {
     daily: isArabic ? "اليوم" : "Daily",
     weekly: isArabic ? "الأسبوع" : "Weekly",
     monthly: isArabic ? "الشهر" : "Monthly",
+
     totalRevenue: isArabic ? "إجمالي الإيرادات" : "Total Revenue",
     bookingOccupancy: isArabic ? "نسبة إشغال الحجوزات" : "Booking Occupancy",
     newPlayers: isArabic ? "لاعبون جدد" : "New Players",
     returningPlayers: isArabic ? "لاعبون عائدون" : "Returning Players",
+    noDataYet: isArabic ? "لا توجد بيانات بعد" : "No data yet",
+
+    revenueHint: isArabic
+      ? "إيراد الحجوزات المؤكدة والمدفوعة فقط"
+      : "Confirmed and approved bookings only",
+    occupancyHint: isArabic
+      ? "محسوبة من الحجوزات المؤكدة والمدفوعة"
+      : "Calculated from confirmed paid bookings",
+    newPlayersHint: isArabic
+      ? "لاعبون ظهروا لأول مرة في هذه الفترة"
+      : "Players appearing for the first time in this period",
+
     revenueTrends: isArabic ? "اتجاهات الإيرادات" : "Revenue Trends",
     revenueSubtitle: isArabic
       ? "نمو الإيرادات خلال الفترة المحددة"
       : "Financial growth over the selected period",
+
     peakHours: isArabic ? "ساعات الذروة" : "Peak Hours",
     peakSubtitle: isArabic ? "كثافة الحجوزات حسب الساعة" : "Intensity per slot",
+
     actual: isArabic ? "فعلي" : "Actual",
     target: isArabic ? "مستهدف" : "Target",
+
     noRevenueData: isArabic
       ? "لا توجد بيانات إيرادات لهذه الفترة"
       : "No revenue data for this period.",
+
     noPeakData: isArabic
-      ? "لا توجد حجوزات لهذه الفترة"
-      : "No booking activity for this period.",
+      ? "لا توجد حجوزات مؤكدة ومدفوعة لهذه الفترة"
+      : "No confirmed paid booking activity for this period.",
+
     insight: isArabic ? "تحليل" : "Insight",
     busiestSlot: isArabic ? "أكثر وقت ازدحامًا" : "Busiest slot",
     from: isArabic ? "من" : "of",
+
+    viewRequests: isArabic ? "عرض الطلبات" : "View requests",
+    manageFields: isArabic ? "إدارة الملاعب" : "Manage fields",
+
+    allCaughtUp: isArabic ? "كل شيء تحت السيطرة" : "All caught up",
+    noActionsDesc: isArabic
+      ? "لا توجد طلبات أو مراجعات تحتاج تدخلك الآن."
+      : "No requests or reviews need your attention right now.",
+
+    paymentReviewsPending: isArabic ? "مدفوعات تحتاج مراجعة" : "Payment reviews pending",
+    noShowCandidates: isArabic ? "حجوزات لم يتم تسجيل حضورها" : "No-show candidates",
+    upcomingConfirmedBookings: isArabic ? "حجوزات مؤكدة قادمة" : "Upcoming confirmed bookings",
+
+    requests: isArabic ? "طلبات الحجز" : "Requests",
+    operations: isArabic ? "التشغيل اليومي" : "Operations",
+    upcomingBookingsLabel: isArabic ? "الحجوزات القادمة" : "Upcoming bookings",
   }
 }
 
@@ -213,12 +292,13 @@ function RevenueTrendChart({
 }) {
   if (points.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/40 text-sm text-muted-foreground">
+      <div className="flex h-64 items-center justify-center rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/40 text-center text-sm text-muted-foreground">
         {labels.noRevenueData}
       </div>
     )
   }
 
+ 
   const width = 760
   const height = 280
   const paddingX = 58
@@ -363,7 +443,7 @@ function PeakHoursChart({
 }) {
   if (points.length === 0) {
     return (
-      <div className="flex h-64 items-center justify-center rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/40 text-sm text-muted-foreground">
+      <div className="flex h-64 items-center justify-center rounded-2xl border border-dashed border-emerald-200 bg-emerald-50/40 text-center text-sm text-muted-foreground">
         {labels.noPeakData}
       </div>
     )
@@ -374,13 +454,13 @@ function PeakHoursChart({
 
   return (
     <div className="flex h-64 flex-col justify-end gap-4 rounded-2xl bg-emerald-50/50 p-4">
-      <div className="flex flex-1 items-end justify-center gap-3">
+      <div className="flex flex-1 items-end justify-center gap-3 overflow-x-auto">
         {points.map((point) => {
           const height = Math.max(18, (point.count / maxCount) * 150)
           const isBusiest = point.hour === busiest.hour
 
           return (
-            <div key={point.hour} className="flex flex-col items-center gap-2">
+            <div key={point.hour} className="flex min-w-8 flex-col items-center gap-2">
               <div
                 className={
                   isBusiest
@@ -413,12 +493,68 @@ function PeakHoursChart({
   )
 }
 
+function KpiCard({
+  icon: Icon,
+  value,
+  label,
+  hint,
+  isEmpty,
+}: {
+  icon: ComponentType<{ className?: string }>
+  value: string
+  label: string
+  hint?: string
+  isEmpty?: boolean
+}) {
+  return (
+    <Card className="border-emerald-100 bg-white/90 shadow-sm transition hover:-translate-y-0.5 hover:shadow-md">
+      <CardContent className="p-4">
+        <div className="mb-5 flex items-center justify-between">
+          <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-50 text-emerald-700">
+            <Icon className="h-4 w-4" />
+          </div>
+
+          {isEmpty ? (
+            <span className="rounded-full bg-slate-100 px-2 py-1 text-[10px] font-semibold text-slate-500">
+              Empty
+            </span>
+          ) : (
+            <span className="rounded-full bg-emerald-50 px-2 py-1 text-[10px] font-semibold text-emerald-700">
+              Live
+            </span>
+          )}
+        </div>
+
+        <div
+          className={
+            isEmpty
+              ? "text-2xl font-bold text-slate-400"
+              : "text-2xl font-bold text-foreground"
+          }
+        >
+          {value}
+        </div>
+
+        <div className="mt-1 text-sm text-muted-foreground">{label}</div>
+
+        {hint ? (
+          <div className="mt-3 border-t border-emerald-100 pt-3 text-xs text-muted-foreground">
+            {hint}
+          </div>
+        ) : null}
+      </CardContent>
+    </Card>
+  )
+}
+
 export default function OwnerOverviewPage() {
   const overview = useOwnerOverview()
   const bookings = useOwnerBookings()
   const { t, language } = useAppTranslations()
 
   const [period, setPeriod] = useState<Period>("daily")
+
+  const bookingsList = useMemo(() => bookings.data ?? [], [bookings.data])
 
   const currentLanguage: AppLanguage = language === "en" ? "en" : "ar"
   const isArabic = currentLanguage === "ar"
@@ -454,60 +590,67 @@ export default function OwnerOverviewPage() {
     })
   }
 
-  const { kpis, revenueTrendPoints, peakHourPoints } = useMemo(() => {
-    const { start, end } = getPeriodRange(period)
+  const { kpis, revenueTrendPoints, peakHourPoints, hasApprovedRevenueBookings } =
+    useMemo(() => {
+      const { start, end } = getPeriodRange(period)
 
-    const filteredBookings = bookings.data.filter((booking) => {
-      const bookingDate = new Date(booking.startTime)
-      return bookingDate >= start && bookingDate < end
-    })
+      const filteredBookings = bookingsList.filter((booking) => {
+        const bookingDate = new Date(booking.startTime)
+        return bookingDate >= start && bookingDate < end
+      })
 
-    const revenueBookings = filteredBookings.filter((booking) =>
-      isRevenueStatus(booking.bookingStatus)
-    )
+      const revenueBookings = filteredBookings.filter(isApprovedRevenueBooking)
 
-    const totalRevenue = revenueBookings.reduce(
-      (sum, booking) => sum + (Number(booking.amount) || 0),
-      0
-    )
-    const totalBookings = filteredBookings.length
-    const occupancy =
-      totalBookings > 0 ? (revenueBookings.length / totalBookings) * 100 : 0
+      const totalRevenue = revenueBookings.reduce(
+        (sum, booking) => sum + (Number(booking.amount) || 0),
+        0
+      )
 
-    const previousBookings = bookings.data.filter(
-      (booking) => new Date(booking.startTime) < start
-    )
-    const previousPlayers = new Set(previousBookings.map(getPlayerKey))
-    const periodPlayers = new Set(filteredBookings.map(getPlayerKey))
+      const totalBookings = filteredBookings.length
 
-    const newPlayers = Array.from(periodPlayers).filter(
-      (player) => !previousPlayers.has(player)
-    ).length
-    const returningPlayers = Array.from(periodPlayers).filter((player) =>
-      previousPlayers.has(player)
-    ).length
-    const totalUniquePlayers = periodPlayers.size
-    const returningPercentage =
-      totalUniquePlayers > 0 ? (returningPlayers / totalUniquePlayers) * 100 : 0
+      const occupancy =
+        totalBookings > 0 ? (revenueBookings.length / totalBookings) * 100 : 0
 
-    return {
-      revenueTrendPoints: buildRevenueTrendPoints(filteredBookings, period, locale),
-      peakHourPoints: buildPeakHourPoints(filteredBookings),
-      kpis: {
-        totalRevenue,
-        occupancy: Math.min(Math.max(occupancy, 0), 100),
-        newPlayers,
-        returningPlayers,
-        returningPercentage,
-        totalUniquePlayers,
-      },
-    }
-  }, [bookings.data, locale, period])
+      const previousRevenueBookings = bookingsList.filter((booking) => {
+        const bookingDate = new Date(booking.startTime)
+        return bookingDate < start && isApprovedRevenueBooking(booking)
+      })
+
+      const previousPlayers = new Set(previousRevenueBookings.map(getPlayerKey))
+      const periodPlayers = new Set(revenueBookings.map(getPlayerKey))
+
+      const newPlayers = Array.from(periodPlayers).filter(
+        (player) => !previousPlayers.has(player)
+      ).length
+
+      const returningPlayers = Array.from(periodPlayers).filter((player) =>
+        previousPlayers.has(player)
+      ).length
+
+      const totalUniquePlayers = periodPlayers.size
+
+      const returningPercentage =
+        totalUniquePlayers > 0 ? (returningPlayers / totalUniquePlayers) * 100 : 0
+
+      return {
+        revenueTrendPoints: buildRevenueTrendPoints(revenueBookings, period, locale),
+        peakHourPoints: buildPeakHourPoints(revenueBookings),
+        hasApprovedRevenueBookings: revenueBookings.length > 0,
+        kpis: {
+          totalRevenue,
+          occupancy: Math.min(Math.max(occupancy, 0), 100),
+          newPlayers,
+          returningPlayers,
+          returningPercentage,
+          totalUniquePlayers,
+        },
+      }
+    }, [bookingsList, locale, period])
 
   const upcomingBookings = useMemo(() => {
     const now = Date.now()
 
-    return bookings.data
+    return bookingsList
       .filter(
         (booking) =>
           new Date(booking.startTime).getTime() > now &&
@@ -518,109 +661,89 @@ export default function OwnerOverviewPage() {
           new Date(a.startTime).getTime() - new Date(b.startTime).getTime()
       )
       .slice(0, 5)
-  }, [bookings.data])
+  }, [bookingsList])
 
   const actionCenterItems = useMemo(() => {
-    const items = []
+    const now = Date.now()
 
-    const pendingPaymentReviews = bookings.data.filter(
-  (booking) =>
-    booking.paymentStatus === "not_required" ||
-    booking.bookingStatus === "pending_payment_review"
-)
+    const pendingPaymentReviews = bookingsList.filter(
+      (booking) =>
+        booking.paymentStatus === "pending" ||
+        booking.paymentStatus === "escalated" ||
+        booking.bookingStatus === "pending_payment_review"
+    )
 
-    const noShowCandidates = bookings.data.filter(
+    const noShowCandidates = bookingsList.filter(
       (booking) => booking.checkInStatus === "no_show_candidate"
     )
 
-    const upcomingConfirmed = bookings.data.filter(
+    const upcomingConfirmed = bookingsList.filter(
       (booking) =>
         booking.bookingStatus === "confirmed" &&
-        new Date(booking.startTime).getTime() > Date.now()
+        new Date(booking.startTime).getTime() > now
     )
 
-    if (pendingPaymentReviews.length > 0) {
-      items.push({
-        id: "owner-alert-payments",
-        type: "slow_review" as const,
-        title: t("ownerOverview.alertPaymentsTitle") || "Payment reviews pending",
-        description: `${pendingPaymentReviews.length} booking(s) need payment review.`,
-        severity: "high" as const,
-        status: "open" as const,
-        relatedEntityLabel: "Requests",
-        createdAt: new Date().toISOString(),
-      })
+    const items = [
+      pendingPaymentReviews.length > 0
+        ? {
+            id: "owner-alert-payments",
+            type: "slow_review" as const,
+            title: safeText(
+              t("ownerOverview.alertPaymentsTitle"),
+              labels.paymentReviewsPending
+            ),
+            description: isArabic
+              ? `${pendingPaymentReviews.length} حجز يحتاج مراجعة الدفع.`
+              : `${pendingPaymentReviews.length} booking(s) need payment review.`,
+            severity: "high" as const,
+            status: "open" as const,
+            relatedEntityLabel: labels.requests,
+            createdAt: new Date().toISOString(),
+          }
+        : null,
+
+      noShowCandidates.length > 0
+        ? {
+            id: "owner-alert-no-show",
+            type: "anomaly" as const,
+            title: safeText(
+              t("ownerOverview.alertNoShowTitle"),
+              labels.noShowCandidates
+            ),
+            description: isArabic
+              ? `${noShowCandidates.length} حجز مر وقته بدون تسجيل حضور.`
+              : `${noShowCandidates.length} booking(s) passed without check-in.`,
+            severity: "medium" as const,
+            status: "open" as const,
+            relatedEntityLabel: labels.operations,
+            createdAt: new Date().toISOString(),
+          }
+        : null,
+
+      upcomingConfirmed.length > 0
+        ? {
+            id: "owner-alert-upcoming",
+            type: "anomaly" as const,
+            title: labels.upcomingConfirmedBookings,
+            description: isArabic
+              ? `${upcomingConfirmed.length} حجز مؤكد قادم.`
+              : `${upcomingConfirmed.length} confirmed booking(s) coming up.`,
+            severity: "low" as const,
+            status: "acknowledged" as const,
+            relatedEntityLabel: labels.upcomingBookingsLabel,
+            createdAt: new Date().toISOString(),
+          }
+        : null,
+    ].filter((item): item is NonNullable<typeof item> => item !== null)
+
+    const priority = {
+      high: 3,
+      medium: 2,
+      low: 1,
     }
 
-    if (noShowCandidates.length > 0) {
-      items.push({
-        id: "owner-alert-no-show",
-        type: "anomaly" as const,
-        title: t("ownerOverview.alertNoShowTitle") || "No-show candidates",
-        description: `${noShowCandidates.length} booking(s) passed without check-in.`,
-        severity: "medium" as const,
-        status: "open" as const,
-        relatedEntityLabel: "Operations",
-        createdAt: new Date().toISOString(),
-      })
-    }
-
-    if (upcomingConfirmed.length > 0) {
-      items.push({
-        id: "owner-alert-upcoming",
-        type: "anomaly" as const,
-        title: "Upcoming confirmed bookings",
-        description: `${upcomingConfirmed.length} confirmed booking(s) coming up.`,
-        severity: "low" as const,
-        status: "acknowledged" as const,
-        relatedEntityLabel: "Upcoming bookings",
-        createdAt: new Date().toISOString(),
-      })
-    }
-
-    return items
-  }, [bookings.data, t])
-
-  const columns = [
-    {
-      key: "bookingCode",
-      header: t("ownerOverview.booking"),
-      render: (booking: (typeof upcomingBookings)[number]) => (
-        <div className="space-y-1">
-          <div className="font-medium text-foreground">{booking.bookingCode}</div>
-          <div className="text-xs text-muted-foreground">{booking.fieldName}</div>
-        </div>
-      ),
-    },
-    {
-      key: "customer",
-      header: t("ownerOverview.playerTeam"),
-      render: (booking: (typeof upcomingBookings)[number]) => (
-        <div className="space-y-1">
-          <div className="text-sm text-foreground">{booking.customerName}</div>
-          <div className="text-xs text-muted-foreground">{booking.customerType}</div>
-        </div>
-      ),
-    },
-    {
-      key: "time",
-      header: t("ownerOverview.schedule"),
-      render: (booking: (typeof upcomingBookings)[number]) => (
-        <div className="text-sm text-muted-foreground">
-          {formatDateTimeRange(booking.startTime, booking.endTime)}
-        </div>
-      ),
-    },
-    {
-      key: "amount",
-      header: t("ownerOverview.amount"),
-      render: (booking: (typeof upcomingBookings)[number]) => (
-        <div className="text-sm font-medium text-foreground">
-          {booking.amount.toLocaleString()} {booking.currency}
-        </div>
-      ),
-    },
-  ]
+    return items.sort((a, b) => priority[b.severity] - priority[a.severity])
+  }, [bookingsList, isArabic, labels, t])
 
   const isLoading = overview.isLoading || bookings.isLoading
   const error = overview.error || bookings.error
@@ -628,17 +751,21 @@ export default function OwnerOverviewPage() {
   return (
     <div className="mx-auto max-w-7xl space-y-6">
       <PageHeader
-        title={t("ownerOverview.title")}
-        description={t("ownerOverview.description")}
+        title={safeText(t("ownerOverview.title"), "Owner Dashboard")}
+        description={safeText(
+          t("ownerOverview.description"),
+          "Track bookings, revenue, field activity, and important owner actions."
+        )}
       />
 
       {isLoading ? (
         <LoadingState rows={6} />
-      ) : error ? ( 
+      ) : error ? (
         <EmptyState
           icon={CircleAlert}
-          title={t("ownerOverview.unableToLoad")}
-description={String(error)}        />
+          title={safeText(t("ownerOverview.unableToLoad"), "Unable to load dashboard")}
+          description={String(error)}
+        />
       ) : (
         <>
           <Card className="border-emerald-100 bg-emerald-50/20">
@@ -703,56 +830,51 @@ description={String(error)}        />
 
             <CardContent className="space-y-6">
               <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-4">
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="text-2xl font-bold">
-                      {formatCurrency(kpis.totalRevenue)} EGP
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {labels.totalRevenue}
-                    </div>
-                  </CardContent>
-                </Card>
+                <KpiCard
+                  icon={Banknote}
+                  value={
+                    hasApprovedRevenueBookings
+                      ? `${formatCurrency(kpis.totalRevenue)} EGP`
+                      : "--"
+                  }
+                  label={labels.totalRevenue}
+                  hint={hasApprovedRevenueBookings ? labels.revenueHint : labels.noDataYet}
+                  isEmpty={!hasApprovedRevenueBookings}
+                />
 
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="text-2xl font-bold">
-                      {kpis.occupancy.toFixed(1)}%
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {labels.bookingOccupancy}
-                    </div>
-                    <div className="mt-2 h-2 w-full rounded-full bg-gray-200">
-                      <div
-                        className="h-2 rounded-full bg-emerald-600"
-                        style={{ width: `${kpis.occupancy}%` }}
-                      />
-                    </div>
-                  </CardContent>
-                </Card>
+                <KpiCard
+                  icon={Percent}
+                  value={
+                    hasApprovedRevenueBookings ? `${kpis.occupancy.toFixed(1)}%` : "--"
+                  }
+                  label={labels.bookingOccupancy}
+                  hint={hasApprovedRevenueBookings ? labels.occupancyHint : labels.noDataYet}
+                  isEmpty={!hasApprovedRevenueBookings}
+                />
 
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="text-2xl font-bold">{kpis.newPlayers}</div>
-                    <div className="text-sm text-muted-foreground">
-                      {labels.newPlayers}
-                    </div>
-                  </CardContent>
-                </Card>
+                <KpiCard
+                  icon={Users}
+                  value={hasApprovedRevenueBookings ? String(kpis.newPlayers) : "--"}
+                  label={labels.newPlayers}
+                  hint={hasApprovedRevenueBookings ? labels.newPlayersHint : labels.noDataYet}
+                  isEmpty={!hasApprovedRevenueBookings}
+                />
 
-                <Card>
-                  <CardContent className="p-4">
-                    <div className="text-2xl font-bold">
-                      {kpis.returningPercentage.toFixed(1)}%
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {labels.returningPlayers}
-                    </div>
-                    <div className="text-xs text-muted-foreground">
-                      {kpis.returningPlayers} {labels.from} {kpis.totalUniquePlayers}
-                    </div>
-                  </CardContent>
-                </Card>
+                <KpiCard
+                  icon={RotateCcw}
+                  value={
+                    hasApprovedRevenueBookings
+                      ? `${kpis.returningPercentage.toFixed(1)}%`
+                      : "--"
+                  }
+                  label={labels.returningPlayers}
+                  hint={
+                    hasApprovedRevenueBookings
+                      ? `${kpis.returningPlayers} ${labels.from} ${kpis.totalUniquePlayers}`
+                      : labels.noDataYet
+                  }
+                  isEmpty={!hasApprovedRevenueBookings}
+                />
               </div>
 
               <div className="grid gap-6 lg:grid-cols-[1.7fr_0.8fr]">
@@ -785,14 +907,21 @@ description={String(error)}        />
 
           <div className="grid gap-6 xl:grid-cols-[1.1fr_0.9fr]">
             {actionCenterItems.length === 0 ? (
-              <EmptyState
-                icon={BellRing}
-                title={t("ownerOverview.noActionItems")}
-                description={t("ownerOverview.noActionItemsDesc")}
-              />
+              <Card className="border-border bg-card">
+                <CardContent className="space-y-4 p-6">
+                  <EmptyState
+                    icon={BellRing}
+                    title={labels.allCaughtUp}
+                    description={labels.noActionsDesc}
+                  />
+                  <Button asChild className="w-full bg-emerald-600 hover:bg-emerald-700">
+                    <Link href="/owner/requests">{labels.viewRequests}</Link>
+                  </Button>
+                </CardContent>
+              </Card>
             ) : (
               <ActionCenterList
-                title={t("ownerOverview.actionCenter")}
+                title={safeText(t("ownerOverview.actionCenter"), "Action Center")}
                 items={actionCenterItems}
               />
             )}
@@ -801,23 +930,74 @@ description={String(error)}        />
               <CardHeader>
                 <CardTitle className="flex items-center gap-2 text-lg text-foreground">
                   <CalendarClock className="h-5 w-5 text-primary" />
-                  {t("ownerOverview.upcomingBookings")}
+                  {safeText(t("ownerOverview.upcomingBookings"), "Upcoming Bookings")}
                 </CardTitle>
               </CardHeader>
 
               <CardContent>
                 {upcomingBookings.length === 0 ? (
-                  <EmptyState
-                    icon={CalendarClock}
-                    title={t("ownerOverview.noUpcomingBookings")}
-                    description={t("ownerOverview.noUpcomingBookingsDesc")}
-                  />
+                  <div className="space-y-4">
+                    <EmptyState
+                      icon={CalendarClock}
+                      title={safeText(
+                        t("ownerOverview.noUpcomingBookings"),
+                        "No upcoming bookings"
+                      )}
+                      description={safeText(
+                        t("ownerOverview.noUpcomingBookingsDesc"),
+                        "Confirmed upcoming bookings will appear here once players book your fields."
+                      )}
+                    />
+                    <Button asChild variant="outline" className="w-full">
+                      <Link href="/owner/fields">{labels.manageFields}</Link>
+                    </Button>
+                  </div>
                 ) : (
-                  <DataTableShell
-                    columns={columns}
-                    rows={upcomingBookings}
-                    getRowId={(booking) => booking.id}
-                  />
+                  <div className="space-y-3">
+                    {upcomingBookings.map((booking) => (
+                      <div
+                        key={booking.id}
+                        className="rounded-2xl border border-emerald-100 bg-emerald-50/40 p-4 transition hover:bg-emerald-50"
+                      >
+                        <div className="flex items-start justify-between gap-3">
+                          <div className="space-y-1">
+                            <div className="font-semibold text-foreground">
+                              {booking.customerName}
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              {booking.bookingCode}
+                            </div>
+                          </div>
+
+                          <div className="rounded-full bg-emerald-100 px-3 py-1 text-xs font-semibold text-emerald-800">
+                            {booking.amount.toLocaleString()} {booking.currency}
+                          </div>
+                        </div>
+
+                        <div className="mt-4 grid gap-2 text-sm text-muted-foreground sm:grid-cols-2">
+                          <div className="flex items-center gap-2">
+                            <MapPin className="h-4 w-4 text-emerald-700" />
+                            <span>{booking.fieldName}</span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <Clock className="h-4 w-4 text-emerald-700" />
+                            <span>{formatShortTimeRange(booking.startTime, booking.endTime)}</span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <UserRound className="h-4 w-4 text-emerald-700" />
+                            <span>{booking.customerType}</span>
+                          </div>
+
+                          <div className="flex items-center gap-2">
+                            <CreditCard className="h-4 w-4 text-emerald-700" />
+                            <span>{formatDateTimeRange(booking.startTime, booking.endTime)}</span>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </CardContent>
             </Card>

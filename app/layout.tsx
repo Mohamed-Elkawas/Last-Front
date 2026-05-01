@@ -114,6 +114,7 @@ export default function RootLayout({
     <html
       lang={defaultLanguage}
       dir={initialDir}
+      data-scroll-behavior="smooth"
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} ${cairo.variable} ${initialFontClass}`}
     >

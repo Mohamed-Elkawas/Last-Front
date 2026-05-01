@@ -15,5 +15,5 @@ export type OwnerTournamentRecord = {
   venueName: LocalizedString
   prize: TournamentPrizeBreakdown
   published: boolean
-  status: "active" | "ended"
+status: "active" | "ended" | "completed"
 }

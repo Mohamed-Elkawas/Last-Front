@@ -10,8 +10,12 @@ import {
   Zap,
   BarChart3,
   CreditCard,
+  Search,
+  Filter,
   Trash2,
+  Trophy,
 } from "lucide-react"
+
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -24,6 +28,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
+
 import { useAppTranslations } from "@/hooks/use-app-translations"
 import { usePlaygroundsCatalog } from "@/hooks/use-playgrounds"
 import { useOwnerAccess } from "@/hooks/use-owner-access"
@@ -35,10 +40,17 @@ import {
   updatePlayground,
   deletePlayground,
 } from "@/lib/services/playgrounds.service"
+
 import { EmptyState } from "@/features/backoffice/shared/components/empty-state"
 import { LoadingState } from "@/features/backoffice/shared/components/loading-state"
 
-function PageHeader({ title, description }: { title: string; description: string }) {
+function PageHeader({
+  title,
+  description,
+}: {
+  title: string
+  description: string
+}) {
   return (
     <div className="space-y-1">
       <h1 className="text-3xl font-bold text-foreground">{title}</h1>
@@ -66,7 +78,12 @@ export default function FieldManagementPage() {
   const { t } = useAppTranslations()
   const router = useRouter()
 
-  const { playgrounds, loading: playgroundsLoading, reload } = usePlaygroundsCatalog()
+  const {
+    playgrounds,
+    loading: playgroundsLoading,
+    reload,
+  } = usePlaygroundsCatalog()
+
   const { ownedPlaygroundIds, hasHydrated: ownerHydrated } = useOwnerAccess()
   const { data: bookingsData = [] } = useOwnerBookings()
 
@@ -76,6 +93,7 @@ export default function FieldManagementPage() {
   const [blockedDate, setBlockedDate] = useState("")
   const [blockedTimes, setBlockedTimes] = useState<Time[]>([])
   const [isSubmitting, setIsSubmitting] = useState(false)
+  const [searchTerm, setSearchTerm] = useState("")
 
   const [newFieldForm, setNewFieldForm] = useState<NewFieldForm>({
     name: "",
@@ -88,8 +106,15 @@ export default function FieldManagementPage() {
     imageUrl: "/images/playground-1.jpg",
   })
 
-  const { userPlaygrounds, fieldPricing, setFieldPricing, setBlockedSlots } =
-    usePlaygroundsStore()
+  const {
+    userPlaygrounds,
+    fieldPricing,
+    blockedSlots,
+    setFieldPricing,
+    setBlockedSlots,
+    updateUserPlayground,
+    removeUserPlayground,
+  } = usePlaygroundsStore()
 
   const safePlaygrounds = Array.isArray(playgrounds) ? playgrounds : []
   const safeBookings = Array.isArray(bookingsData) ? bookingsData : []
@@ -98,28 +123,30 @@ export default function FieldManagementPage() {
     : []
 
   const ownedPlaygrounds = useMemo(() => {
-    if (safePlaygrounds.length === 0 || safeOwnedPlaygroundIds.length === 0) return []
+    if (safePlaygrounds.length === 0 || safeOwnedPlaygroundIds.length === 0) {
+      return []
+    }
 
     const idSet = new Set(safeOwnedPlaygroundIds)
 
-    return safePlaygrounds.filter((p) => idSet.has(p.id))
+    return safePlaygrounds.filter((playground) => idSet.has(playground.id))
   }, [safePlaygrounds, safeOwnedPlaygroundIds])
 
   const fieldsWithOccupancy = useMemo(() => {
     return ownedPlaygrounds.map((field) => {
       const fieldBookings = safeBookings.filter(
-        (b) =>
-          (b as any).fieldId === field.id ||
-          (b as any).playground?.id === field.id ||
-          (b as any).playgroundId === field.id
+        (booking) =>
+          (booking as any).fieldId === field.id ||
+          (booking as any).playground?.id === field.id ||
+          (booking as any).playgroundId === field.id,
       )
 
       const confirmedBookings = fieldBookings.filter(
-        (b) =>
-          (b as any).status === "confirmed" ||
-          (b as any).status === "completed" ||
-          (b as any).bookingStatus === "confirmed" ||
-          (b as any).bookingStatus === "completed"
+        (booking) =>
+          (booking as any).status === "confirmed" ||
+          (booking as any).status === "completed" ||
+          (booking as any).bookingStatus === "confirmed" ||
+          (booking as any).bookingStatus === "completed",
       )
 
       const occupancy =
@@ -143,30 +170,96 @@ export default function FieldManagementPage() {
     })
   }, [ownedPlaygrounds, safeBookings, fieldPricing])
 
-  const featuredField = fieldsWithOccupancy.length > 0 ? fieldsWithOccupancy[0] : null
-  const selectedField = fieldsWithOccupancy.find((f) => f.id === selectedFieldId)
+  const activeFields = fieldsWithOccupancy.length
+
+  const todayRevenue = fieldsWithOccupancy.reduce(
+    (sum, field) => sum + field.confirmedBookings * field.basePricing,
+    0,
+  )
+
+  const filteredFields = useMemo(() => {
+    const keyword = searchTerm.trim().toLowerCase()
+
+    if (!keyword) return fieldsWithOccupancy
+
+    return fieldsWithOccupancy.filter((field) => {
+      const name = `${field.name?.en ?? ""} ${field.name?.ar ?? ""}`.toLowerCase()
+      const location = `${field.location?.en ?? ""} ${field.location?.ar ?? ""
+        }`.toLowerCase()
+
+      return name.includes(keyword) || location.includes(keyword)
+    })
+  }, [fieldsWithOccupancy, searchTerm])
+
+  const featuredField =
+    filteredFields.length > 0 ? filteredFields[0] : null
+
+  const selectedField = fieldsWithOccupancy.find(
+    (field) => field.id === selectedFieldId,
+  )
+
+  const selectedBlockedSlots = useMemo(() => {
+    if (!selectedFieldId || !blockedDate) return []
+
+    return blockedSlots[`${selectedFieldId}_${blockedDate}`] ?? []
+  }, [blockedSlots, selectedFieldId, blockedDate])
+
   const isLoading = playgroundsLoading || !ownerHydrated
 
-  const handleNewField = () => setOpenModal("create")
+  const canManageField = (fieldId: string) => {
+    return safeOwnedPlaygroundIds.includes(fieldId)
+  }
+
+  const isValidBlockedDate = (value: string) => {
+    return /^\d{4}-\d{2}-\d{2}$/.test(value)
+  }
+
+  const handleBlockedDateChange = (value: string) => {
+    const digits = value.replace(/\D/g, "").slice(0, 8)
+
+    let formatted = digits
+
+    if (digits.length > 4) {
+      formatted = `${digits.slice(0, 4)}-${digits.slice(4)}`
+    }
+
+    if (digits.length > 6) {
+      formatted = `${digits.slice(0, 4)}-${digits.slice(4, 6)}-${digits.slice(
+        6,
+      )}`
+    }
+
+    setBlockedDate(formatted)
+  }
+
+  const handleNewField = () => {
+    router.push("/auth/signup?accountType=owner")
+  }
 
   const handleEditPricing = (fieldId: string) => {
+    if (!canManageField(fieldId)) return
+
     setSelectedFieldId(fieldId)
     setOpenModal("pricing")
   }
 
   const handleBlockSlots = (fieldId: string) => {
+    if (!canManageField(fieldId)) return
+
     setSelectedFieldId(fieldId)
     setOpenModal("blocking")
   }
 
   const handleCreateTournament = (fieldId: string) => {
+    if (!canManageField(fieldId)) return
+
     router.push(`/owner/tournaments?fieldId=${fieldId}`)
   }
 
   const handleDeleteField = async (fieldId: string) => {
-    const confirmed = window.confirm(
-      "Are you sure you want to delete this field permanently?"
-    )
+    if (!canManageField(fieldId)) return
+
+    const confirmed = window.confirm("Are you sure you want to delete this field?")
 
     if (!confirmed) return
 
@@ -174,6 +267,8 @@ export default function FieldManagementPage() {
 
     try {
       await deletePlayground(fieldId)
+
+      removeUserPlayground(fieldId)
 
       const ownerStore = useOwnerAccessStore.getState()
       const currentIds = ownerStore.ownedPlaygroundIds ?? []
@@ -187,52 +282,76 @@ export default function FieldManagementPage() {
   }
 
   const handleSavePricing = async () => {
-    if (!selectedFieldId) return
+    if (!selectedFieldId || !canManageField(selectedFieldId)) return
 
     setIsSubmitting(true)
 
     try {
       const morning = Number(
-        (document.getElementById("morningPrice") as HTMLInputElement)?.value ?? 0
+        (document.getElementById("morningPrice") as HTMLInputElement)?.value ??
+        0,
       )
 
       const evening = Number(
-        (document.getElementById("eveningPrice") as HTMLInputElement)?.value ?? 0
+        (document.getElementById("eveningPrice") as HTMLInputElement)?.value ??
+        0,
       )
 
-      if (morning > 0 && evening > 0) {
-        setFieldPricing(selectedFieldId, { morning, evening })
+      if (morning <= 0 || evening <= 0) return
 
-        const playground = userPlaygrounds.find((p) => p.id === selectedFieldId)
+      setFieldPricing(selectedFieldId, { morning, evening })
 
-        if (playground) {
-          await updatePlayground(selectedFieldId, {
-            price: { min: morning, max: evening },
-          })
-        }
+      updateUserPlayground(selectedFieldId, {
+        price: {
+          min: morning,
+          max: evening,
+        },
+      })
 
-        await reload()
+      await updatePlayground(selectedFieldId, {
+        price: {
+          min: morning,
+          max: evening,
+        },
+      })
 
-        setOpenModal(null)
-        setSelectedFieldId(null)
-      }
+      await reload()
+
+      setOpenModal(null)
+      setSelectedFieldId(null)
     } finally {
       setIsSubmitting(false)
     }
   }
 
   const handleSaveBlockedSlots = async () => {
-    if (!selectedFieldId || !blockedDate) return
+    if (!selectedFieldId || !canManageField(selectedFieldId)) return
+
+    if (!isValidBlockedDate(blockedDate)) {
+      window.alert("Please enter date as YYYY-MM-DD.")
+      return
+    }
+
+    if (blockedTimes.length === 0) {
+      window.alert("Please select at least one slot.")
+      return
+    }
 
     setIsSubmitting(true)
 
     try {
       const times = blockedTimes.map(
         (time) =>
-          `${String(time.hour).padStart(2, "0")}:${String(time.minute).padStart(2, "0")}`
+          `${String(time.hour).padStart(2, "0")}:${String(
+            time.minute,
+          ).padStart(2, "0")}`,
       )
 
-      setBlockedSlots(selectedFieldId, blockedDate, times)
+      const mergedTimes = Array.from(
+        new Set([...selectedBlockedSlots, ...times]),
+      ).sort()
+
+      setBlockedSlots(selectedFieldId, blockedDate, mergedTimes)
 
       setOpenModal(null)
       setSelectedFieldId(null)
@@ -244,6 +363,11 @@ export default function FieldManagementPage() {
   }
 
   const handleCreateField = async () => {
+    if (fieldsWithOccupancy.length >= 1) {
+      window.alert("This owner already has an assigned playground.")
+      return
+    }
+
     if (
       !newFieldForm.name ||
       !newFieldForm.location ||
@@ -281,7 +405,7 @@ export default function FieldManagementPage() {
       const currentIds = ownerStore.ownedPlaygroundIds ?? []
 
       ownerStore.setOwnerApproved(
-        Array.from(new Set([...currentIds, createdPlayground.id]))
+        Array.from(new Set([...currentIds, createdPlayground.id])),
       )
 
       setNewFieldForm({
@@ -310,6 +434,7 @@ export default function FieldManagementPage() {
           title={t("ownerFields.title")}
           description={t("ownerFields.subtitle")}
         />
+
         <LoadingState rows={5} />
       </div>
     )
@@ -317,7 +442,7 @@ export default function FieldManagementPage() {
 
   return (
     <div className="mx-auto max-w-7xl space-y-6 px-4 py-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-4">
         <PageHeader
           title={t("ownerFields.title")}
           description={t("ownerFields.subtitle")}
@@ -332,6 +457,42 @@ export default function FieldManagementPage() {
         </Button>
       </div>
 
+      <div className="grid gap-3 sm:grid-cols-2">
+        <Card className="rounded-2xl border-green-100">
+          <CardContent className="p-5">
+            <p className="text-sm text-muted-foreground">Active Fields</p>
+            <p className="mt-2 text-2xl font-bold text-green-700">
+              {activeFields.toString().padStart(2, "0")}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="rounded-2xl border-green-100">
+          <CardContent className="p-5">
+            <p className="text-sm text-muted-foreground">Today&apos;s Revenue</p>
+            <p className="mt-2 text-2xl font-bold text-green-700">
+              ${todayRevenue}
+            </p>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+          <Input
+            value={searchTerm}
+            onChange={(event) => setSearchTerm(event.target.value)}
+            placeholder="Search field name..."
+            className="rounded-xl pl-9"
+          />
+        </div>
+
+        <Button variant="outline" className="rounded-xl px-3">
+          <Filter className="h-4 w-4" />
+        </Button>
+      </div>
+
       {featuredField ? (
         <Card className="overflow-hidden border-0 shadow-lg">
           <div className="grid gap-6 md:grid-cols-[1.5fr_1fr]">
@@ -341,13 +502,14 @@ export default function FieldManagementPage() {
                   src={featuredField.imageUrl}
                   alt={featuredField.name.en || featuredField.name.ar || "Field"}
                   className="h-full w-full object-cover"
-                  onError={(e) => {
-                    const target = e.target as HTMLImageElement
+                  onError={(event) => {
+                    const target = event.target as HTMLImageElement
+
                     target.style.display = "none"
                     target.parentElement?.classList.add(
                       "bg-gradient-to-br",
                       "from-green-400",
-                      "to-green-600"
+                      "to-green-600",
                     )
                   }}
                 />
@@ -355,7 +517,7 @@ export default function FieldManagementPage() {
                 <div className="h-full w-full bg-gradient-to-br from-green-400 to-green-600" />
               )}
 
-              <div className="absolute inset-0 flex items-center justify-center">
+              <div className="absolute inset-0 flex items-center justify-center bg-black/20">
                 <div className="text-center text-white">
                   <div className="text-xl font-bold">
                     {featuredField.name.en || featuredField.name.ar}
@@ -367,6 +529,7 @@ export default function FieldManagementPage() {
                 <div className="inline-block rounded bg-white px-3 py-1 text-xs font-bold text-green-700">
                   {t("ownerFields.premierField")}
                 </div>
+
                 <div className="inline-block rounded bg-white px-3 py-1 text-xs font-bold text-green-700">
                   {t("ownerFields.outdoor")}
                 </div>
@@ -437,16 +600,17 @@ export default function FieldManagementPage() {
 
                 <Button
                   onClick={() => handleCreateTournament(featuredField.id)}
-                  className="bg-pink-600 hover:bg-pink-700"
+                  className="bg-green-700 hover:bg-green-800"
                 >
-                  {t("ownerFields.createTournament")}
+                  <Trophy className="h-4 w-4" />
+                  Create Tourney
                 </Button>
 
                 <Button
                   onClick={() => handleDeleteField(featuredField.id)}
-                  variant="destructive"
-                  className="gap-2"
+                  variant="outline"
                   disabled={isSubmitting}
+                  className="border-red-200 bg-red-50 text-red-600 hover:bg-red-100"
                 >
                   <Trash2 className="h-4 w-4" />
                   Delete Field
@@ -467,7 +631,7 @@ export default function FieldManagementPage() {
         </Card>
       )}
 
-      <div className="grid gap-6 lg:grid-cols-[1fr_300px]">
+      <div className="grid gap-6 xl:grid-cols-[1fr_300px]">
         <div className="space-y-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0">
@@ -495,29 +659,30 @@ export default function FieldManagementPage() {
             </CardHeader>
 
             <CardContent>
-              {fieldsWithOccupancy.length === 0 ? (
+              {filteredFields.length === 0 ? (
                 <EmptyState
                   icon={AlertCircle}
                   title={t("ownerFields.noFields")}
                   description={t("ownerFields.addFirstField")}
                 />
               ) : viewMode === "grid" ? (
-                <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {fieldsWithOccupancy.map((field) => (
-                    <Card key={field.id} className="overflow-hidden">
-                      <div className="relative h-24">
+                <div className="grid gap-5 sm:grid-cols-2 2xl:grid-cols-3">
+                  {filteredFields.map((field) => (
+                    <Card key={field.id} className="min-w-0 overflow-hidden rounded-2xl">
+                      <div className="relative h-32">
                         {field.imageUrl ? (
                           <img
                             src={field.imageUrl}
                             alt={field.name.en || field.name.ar || "Field"}
                             className="h-full w-full object-cover"
-                            onError={(e) => {
-                              const target = e.target as HTMLImageElement
+                            onError={(event) => {
+                              const target = event.target as HTMLImageElement
+
                               target.style.display = "none"
                               target.parentElement?.classList.add(
                                 "bg-gradient-to-br",
                                 "from-green-300",
-                                "to-green-500"
+                                "to-green-500",
                               )
                             }}
                           />
@@ -550,7 +715,7 @@ export default function FieldManagementPage() {
                           </div>
                         </div>
 
-                        <div className="grid grid-cols-2 gap-2 pt-2">
+                        <div className="grid grid-cols-1 gap-2 pt-2 sm:grid-cols-2">
                           <Button
                             size="sm"
                             onClick={() => handleEditPricing(field.id)}
@@ -564,54 +729,42 @@ export default function FieldManagementPage() {
                             size="sm"
                             variant="outline"
                             className="text-xs"
-                            onClick={() =>
-                              router.push(`/owner/operations?fieldId=${field.id}`)
-                            }
+                            onClick={() => handleBlockSlots(field.id)}
                           >
-                            {t("ownerFields.viewSchedule")}
+                            {t("ownerFields.blockSlots")}
                           </Button>
 
                           <Button
                             size="sm"
-                            variant="destructive"
-                            className="col-span-2 gap-2 text-xs"
-                            disabled={isSubmitting}
-                            onClick={() => handleDeleteField(field.id)}
+                            className="min-w-0 gap-1 bg-green-700 text-xs hover:bg-green-800"
                           >
-                            <Trash2 className="h-3 w-3" />
-                            Delete Field
+                            <Trophy className="h-3 w-3 shrink-0" />
+                            <span className="truncate">Create Tourney</span>
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="min-w-0 gap-1 border-red-200 bg-red-50 text-xs text-red-600 hover:bg-red-100"
+                          >
+                            <Trash2 className="h-3 w-3 shrink-0" />
+                            <span className="truncate">Delete Field</span>
                           </Button>
                         </div>
                       </CardContent>
                     </Card>
                   ))}
-
-                  <Card
-                    onClick={handleNewField}
-                    className="flex cursor-pointer items-center justify-center border-2 border-dashed bg-green-50 transition-colors hover:bg-green-100"
-                  >
-                    <CardContent className="flex flex-col items-center justify-center space-y-3 p-4 text-center">
-                      <Plus className="h-8 w-8 text-green-600" />
-                      <div>
-                        <h4 className="font-semibold">
-                          {t("ownerFields.registerNewZone")}
-                        </h4>
-                        <p className="text-sm text-muted-foreground">
-                          {t("ownerFields.addNewFieldOrZone")}
-                        </p>
-                      </div>
-                    </CardContent>
-                  </Card>
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {fieldsWithOccupancy.map((field) => (
+                  {filteredFields.map((field) => (
                     <Card key={field.id} className="p-4">
                       <div className="flex items-center justify-between gap-4">
                         <div className="space-y-1">
                           <h4 className="font-semibold">
                             {field.name.en || field.name.ar}
                           </h4>
+
                           <p className="text-sm text-muted-foreground">
                             {t("ownerFields.fieldCount", {
                               id: field.id.slice(-4).toUpperCase(),
@@ -620,7 +773,7 @@ export default function FieldManagementPage() {
                           </p>
                         </div>
 
-                        <div className="flex gap-2">
+                        <div className="flex flex-wrap gap-2">
                           <Button
                             size="sm"
                             onClick={() => handleEditPricing(field.id)}
@@ -632,22 +785,26 @@ export default function FieldManagementPage() {
                           <Button
                             size="sm"
                             variant="outline"
-                            onClick={() =>
-                              router.push(`/owner/operations?fieldId=${field.id}`)
-                            }
+                            onClick={() => handleBlockSlots(field.id)}
                           >
-                            {t("ownerFields.viewSchedule")}
+                            {t("ownerFields.blockSlots")}
                           </Button>
 
                           <Button
                             size="sm"
-                            variant="destructive"
-                            className="gap-2"
-                            disabled={isSubmitting}
-                            onClick={() => handleDeleteField(field.id)}
+                            className="min-w-0 gap-1 bg-green-700 text-xs hover:bg-green-800"
                           >
-                            <Trash2 className="h-3 w-3" />
-                            Delete
+                            <Trophy className="h-3 w-3 shrink-0" />
+                            <span className="truncate">Create Tourney</span>
+                          </Button>
+
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            className="min-w-0 gap-1 border-red-200 bg-red-50 text-xs text-red-600 hover:bg-red-100"
+                          >
+                            <Trash2 className="h-3 w-3 shrink-0" />
+                            <span className="truncate">Delete Field</span>
                           </Button>
                         </div>
                       </div>
@@ -676,11 +833,14 @@ export default function FieldManagementPage() {
                       <h4 className="text-xs font-bold text-orange-700">
                         {t("ownerFields.maintenanceSeeded")}
                       </h4>
+
                       <p className="text-sm text-orange-700">
                         {t("ownerFields.fieldUnderutilized", {
-                          fieldName: featuredField.name.en || featuredField.name.ar,
+                          fieldName:
+                            featuredField.name.en || featuredField.name.ar,
                         })}
                       </p>
+
                       <button
                         onClick={() => handleBlockSlots(featuredField.id)}
                         className="text-xs font-semibold text-orange-700 underline"
@@ -695,11 +855,14 @@ export default function FieldManagementPage() {
                       <h4 className="text-xs font-bold text-green-700">
                         {t("ownerFields.peakDemandAlert")}
                       </h4>
+
                       <p className="text-sm text-green-700">
                         {t("ownerFields.fieldHighlyBooked", {
-                          fieldName: featuredField.name.en || featuredField.name.ar,
+                          fieldName:
+                            featuredField.name.en || featuredField.name.ar,
                         })}
                       </p>
+
                       <button
                         onClick={() => handleEditPricing(featuredField.id)}
                         className="text-xs font-semibold text-green-700 underline"
@@ -709,15 +872,16 @@ export default function FieldManagementPage() {
                     </div>
                   )}
 
-                  {featuredField.occupancy >= 50 && featuredField.occupancy < 80 && (
-                    <div className="space-y-2 rounded-lg bg-gray-50 p-3">
-                      <p className="text-sm text-gray-700">
-                        {t("ownerFields.optimalLevels", {
-                          occupancy: featuredField.occupancy,
-                        })}
-                      </p>
-                    </div>
-                  )}
+                  {featuredField.occupancy >= 50 &&
+                    featuredField.occupancy < 80 && (
+                      <div className="space-y-2 rounded-lg bg-gray-50 p-3">
+                        <p className="text-sm text-gray-700">
+                          {t("ownerFields.optimalLevels", {
+                            occupancy: featuredField.occupancy,
+                          })}
+                        </p>
+                      </div>
+                    )}
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground">
@@ -739,6 +903,7 @@ export default function FieldManagementPage() {
               <p className="text-sm text-foreground">
                 {t("ownerFields.aiDetected")}
               </p>
+
               <Button className="w-full bg-green-600 hover:bg-green-700">
                 <BarChart3 className="h-4 w-4" />
                 {t("ownerFields.optimizeMyRates")}
@@ -747,137 +912,6 @@ export default function FieldManagementPage() {
           </Card>
         </div>
       </div>
-
-      <Dialog
-        open={openModal === "create"}
-        onOpenChange={(open) => {
-          if (!open) setOpenModal(null)
-        }}
-      >
-        <DialogContent className="max-h-[90vh] max-w-2xl overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>{t("ownerFields.newField")}</DialogTitle>
-            <DialogDescription>
-              {t("ownerFields.addNewFieldOrZone")}
-            </DialogDescription>
-          </DialogHeader>
-
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="name">Field Name</Label>
-              <Input
-                id="name"
-                value={newFieldForm.name}
-                onChange={(e) =>
-                  setNewFieldForm((prev) => ({ ...prev, name: e.target.value }))
-                }
-                placeholder="e.g., Heliopolis 5v5 Arena"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="location">Location</Label>
-              <Input
-                id="location"
-                value={newFieldForm.location}
-                onChange={(e) =>
-                  setNewFieldForm((prev) => ({
-                    ...prev,
-                    location: e.target.value,
-                  }))
-                }
-                placeholder="e.g., Heliopolis, Cairo"
-              />
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="fieldType">Field Type</Label>
-              <select
-                id="fieldType"
-                value={newFieldForm.fieldType}
-                onChange={(e) =>
-                  setNewFieldForm((prev) => ({
-                    ...prev,
-                    fieldType: e.target.value as "5v5" | "7v7" | "11v11",
-                  }))
-                }
-                className="w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-              >
-                <option value="5v5">5v5</option>
-                <option value="7v7">7v7</option>
-                <option value="11v11">11v11</option>
-              </select>
-            </div>
-
-            <div className="grid grid-cols-2 gap-4">
-              <div className="space-y-2">
-                <Label htmlFor="minPrice">Minimum Price (EGP/hr)</Label>
-                <Input
-                  id="minPrice"
-                  type="number"
-                  value={newFieldForm.minPrice}
-                  onChange={(e) =>
-                    setNewFieldForm((prev) => ({
-                      ...prev,
-                      minPrice: e.target.value,
-                    }))
-                  }
-                  placeholder="e.g., 200"
-                />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="maxPrice">Maximum Price (EGP/hr)</Label>
-                <Input
-                  id="maxPrice"
-                  type="number"
-                  value={newFieldForm.maxPrice}
-                  onChange={(e) =>
-                    setNewFieldForm((prev) => ({
-                      ...prev,
-                      maxPrice: e.target.value,
-                    }))
-                  }
-                  placeholder="e.g., 400"
-                />
-              </div>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="imageUrl">Image URL</Label>
-              <Input
-                id="imageUrl"
-                value={newFieldForm.imageUrl}
-                onChange={(e) =>
-                  setNewFieldForm((prev) => ({
-                    ...prev,
-                    imageUrl: e.target.value,
-                  }))
-                }
-                placeholder="/images/playground-1.jpg"
-              />
-              <p className="text-xs text-muted-foreground">
-                Enter the image URL for your field. Use a placeholder if not available.
-              </p>
-            </div>
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setOpenModal(null)}>
-              {t("ownerFields.cancel")}
-            </Button>
-            <Button
-              onClick={handleCreateField}
-              disabled={isSubmitting}
-              className="bg-green-600 hover:bg-green-700"
-            >
-              {isSubmitting
-                ? t("ownerFields.saving")
-                : t("ownerFields.saveChanges")}
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
 
       <Dialog
         open={openModal === "pricing"}
@@ -903,9 +937,11 @@ export default function FieldManagementPage() {
               <Label htmlFor="morningPrice">
                 {t("ownerFields.morningPrice")}
               </Label>
+
               <p className="text-xs text-muted-foreground">
                 {t("ownerFields.morningPriceHint")}
               </p>
+
               <Input
                 id="morningPrice"
                 type="number"
@@ -913,8 +949,8 @@ export default function FieldManagementPage() {
                 defaultValue={
                   selectedField
                     ? fieldPricing[selectedField.id]?.morning ??
-                      selectedField.price?.min ??
-                      0
+                    selectedField.price?.min ??
+                    0
                     : 0
                 }
               />
@@ -924,9 +960,11 @@ export default function FieldManagementPage() {
               <Label htmlFor="eveningPrice">
                 {t("ownerFields.eveningPrice")}
               </Label>
+
               <p className="text-xs text-muted-foreground">
                 {t("ownerFields.eveningPriceHint")}
               </p>
+
               <Input
                 id="eveningPrice"
                 type="number"
@@ -934,9 +972,9 @@ export default function FieldManagementPage() {
                 defaultValue={
                   selectedField
                     ? fieldPricing[selectedField.id]?.evening ??
-                      selectedField.price?.max ??
-                      selectedField.price?.min ??
-                      0
+                    selectedField.price?.max ??
+                    selectedField.price?.min ??
+                    0
                     : 0
                 }
               />
@@ -953,6 +991,7 @@ export default function FieldManagementPage() {
             >
               {t("ownerFields.cancel")}
             </Button>
+
             <Button
               onClick={handleSavePricing}
               disabled={isSubmitting}
@@ -992,51 +1031,76 @@ export default function FieldManagementPage() {
               <Label htmlFor="blockedDate">
                 {t("ownerFields.selectDate")}
               </Label>
+
               <Input
                 id="blockedDate"
-                type="date"
+                type="text"
+                inputMode="numeric"
+                maxLength={10}
+                placeholder="YYYY-MM-DD"
                 value={blockedDate}
-                onChange={(e) => setBlockedDate(e.target.value)}
+                onChange={(event) => handleBlockedDateChange(event.target.value)}
               />
             </div>
 
             <div className="space-y-2">
               <Label>{t("ownerFields.selectSlots")}</Label>
+
               <p className="text-xs text-muted-foreground">
                 Select time slots to block on {blockedDate || "selected date"}
               </p>
 
               <div className="grid grid-cols-3 gap-2">
-                {Array.from({ length: 24 }, (_, i) => i).map((hour) => (
-                  <button
-                    key={hour}
-                    onClick={() => {
-                      const time = { hour, minute: 0 }
+                {Array.from({ length: 24 }, (_, hour) => {
+                  const slotLabel = `${String(hour).padStart(2, "0")}:00`
 
-                      setBlockedTimes((prev) => {
-                        const exists = prev.some(
-                          (t) => t.hour === hour && t.minute === 0
-                        )
+                  const isSelected = blockedTimes.some(
+                    (item) => item.hour === hour && item.minute === 0,
+                  )
 
-                        return exists
-                          ? prev.filter(
-                              (t) => !(t.hour === hour && t.minute === 0)
+                  const isAlreadyBlocked =
+                    selectedBlockedSlots.includes(slotLabel)
+
+                  return (
+                    <button
+                      key={hour}
+                      type="button"
+                      onClick={() => {
+                        const time = { hour, minute: 0 }
+
+                        setBlockedTimes((prev) => {
+                          const exists = prev.some(
+                            (item) =>
+                              item.hour === hour && item.minute === 0,
+                          )
+
+                          return exists
+                            ? prev.filter(
+                              (item) =>
+                                !(
+                                  item.hour === hour &&
+                                  item.minute === 0
+                                ),
                             )
-                          : [...prev, time]
-                      })
-                    }}
-                    className={`rounded px-2 py-1 text-xs font-medium transition-colors ${
-                      blockedTimes.some(
-                        (t) => t.hour === hour && t.minute === 0
-                      )
+                            : [...prev, time]
+                        })
+                      }}
+                      className={`rounded px-2 py-1 text-xs font-medium transition-colors ${isSelected || isAlreadyBlocked
                         ? "bg-red-600 text-white"
                         : "bg-gray-200 text-gray-700 hover:bg-gray-300"
-                    }`}
-                  >
-                    {`${String(hour).padStart(2, "0")}:00`}
-                  </button>
-                ))}
+                        }`}
+                    >
+                      {slotLabel}
+                    </button>
+                  )
+                })}
               </div>
+
+              {selectedBlockedSlots.length > 0 && (
+                <p className="text-xs text-red-600">
+                  Already blocked: {selectedBlockedSlots.join(", ")}
+                </p>
+              )}
             </div>
           </div>
 
@@ -1055,7 +1119,11 @@ export default function FieldManagementPage() {
 
             <Button
               onClick={handleSaveBlockedSlots}
-              disabled={isSubmitting || !blockedDate || blockedTimes.length === 0}
+              disabled={
+                isSubmitting ||
+                !isValidBlockedDate(blockedDate) ||
+                blockedTimes.length === 0
+              }
               className="bg-green-600 hover:bg-green-700"
             >
               {isSubmitting
