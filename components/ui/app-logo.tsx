@@ -6,20 +6,24 @@ type AppLogoProps = {
   showTagline?: boolean
 }
 
-export function AppLogo({ className, compact = false, showTagline = false }: AppLogoProps) {
+export function AppLogo({
+  className,
+  compact = false,
+  showTagline = false,
+}: AppLogoProps) {
   return (
     <div
       className={cn(
-        "inline-flex items-center gap-3 align-middle select-none transition-transform duration-200 hover:scale-[1.01]",
+        "inline-flex min-w-0 items-center gap-2 align-middle select-none transition-transform duration-200 hover:scale-[1.01] sm:gap-3",
         className,
       )}
       aria-label="HAGZAYA"
     >
-      <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-primary shadow-sm ring-1 ring-primary/25">
+      <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-primary shadow-sm ring-1 ring-primary/25 sm:h-11 sm:w-11">
         <svg
           viewBox="0 0 48 48"
           aria-hidden="true"
-          className="h-7 w-7 text-primary-foreground"
+          className="h-6 w-6 text-primary-foreground sm:h-7 sm:w-7"
           fill="none"
           xmlns="http://www.w3.org/2000/svg"
         >
@@ -32,10 +36,11 @@ export function AppLogo({ className, compact = false, showTagline = false }: App
       </div>
 
       {!compact && (
-        <div className="leading-none">
-          <div className="text-[1.04rem] font-black uppercase tracking-[0.2em] text-primary">
+        <div className="min-w-0 leading-none">
+          <div className="max-w-[7.5rem] truncate text-[0.9rem] font-black uppercase tracking-[0.14em] text-primary sm:max-w-none sm:text-[1.04rem] sm:tracking-[0.2em]">
             HAGZAYA
           </div>
+
           {showTagline && (
             <div className="mt-1 hidden text-[0.67rem] font-semibold uppercase tracking-[0.18em] text-muted-foreground sm:block">
               Football Booking

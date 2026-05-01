@@ -28,7 +28,10 @@ import {
 import { cn } from "@/lib/utils"
 import { useAuth } from "@/hooks/use-auth"
 import { useTranslate } from "@/hooks/use-translate"
-import { LanguageSwitcher, LanguageToggleButton } from "@/components/shared/language-switcher"
+import {
+  LanguageSwitcher,
+  LanguageToggleButton,
+} from "@/components/shared/language-switcher"
 import { AUTH_ROUTES } from "@/lib/auth/routes"
 import { useNotifications } from "@/hooks/use-notifications"
 import { usePoints } from "@/hooks/use-points"
@@ -61,34 +64,36 @@ export function Navbar() {
 
   const navLinks = isOwnerSession
     ? [
-        {
-          href: AUTH_ROUTES.ownerHome,
-          label: t("ownerBookings.navLink"),
-          icon: ClipboardList,
-        },
-      ]
+      {
+        href: AUTH_ROUTES.ownerHome,
+        label: t("ownerBookings.navLink"),
+        icon: ClipboardList,
+      },
+    ]
     : [
-        { href: "/", label: t("common.home"), icon: Home },
-        { href: "/playgrounds", label: t("common.playgrounds"), icon: MapPin },
-        { href: "/tournaments", label: t("common.tournaments"), icon: Trophy },
-        { href: "/my-tournaments", label: myTournamentsLabel, icon: Trophy },
-        { href: "/bookings", label: t("common.myBookings"), icon: Calendar },
-      ]
+      { href: "/", label: t("common.home"), icon: Home },
+      { href: "/playgrounds", label: t("common.playgrounds"), icon: MapPin },
+      { href: "/tournaments", label: t("common.tournaments"), icon: Trophy },
+      { href: "/my-tournaments", label: myTournamentsLabel, icon: Trophy },
+      { href: "/bookings", label: t("common.myBookings"), icon: Calendar },
+    ]
 
   const bottomNavLinks = isOwnerSession
     ? navLinks
     : navLinks.filter((link) =>
-        ["/", "/playgrounds", "/tournaments", "/bookings"].includes(link.href),
-      )
+      ["/", "/playgrounds", "/tournaments", "/bookings"].includes(link.href),
+    )
 
   return (
     <>
       <header className="sticky top-0 z-50 w-full border-b border-border bg-card">
-        <div className="mx-auto flex min-h-16 w-full max-w-7xl items-center justify-between gap-2 px-3 py-2 sm:px-6">
-          <div className="flex min-w-0 flex-1 items-center gap-3 lg:gap-6">
-            <div className="min-w-0 shrink">
-              <AppLogo />
-            </div>
+        <div className="mx-auto flex min-h-16 w-full max-w-7xl items-center justify-between gap-2 overflow-hidden px-2 py-2 sm:px-6">
+          <div className="flex min-w-0 flex-1 items-center gap-2 lg:gap-6">
+            <Link href="/" className="flex min-w-0 items-center">
+              <div className="min-w-0 [&_span]:max-w-[110px] [&_span]:truncate sm:[&_span]:max-w-none">
+                <AppLogo />
+              </div>
+            </Link>
 
             <nav className="hidden items-center gap-1 lg:flex">
               {navLinks.map((link) => {
@@ -116,7 +121,7 @@ export function Navbar() {
             </nav>
           </div>
 
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <div className="flex shrink-0 items-center gap-1 sm:gap-2">
             {isAuthenticated ? (
               <>
                 <div className="flex h-9 items-center gap-1 rounded-full bg-accent px-2">
@@ -126,7 +131,12 @@ export function Navbar() {
                   </span>
                 </div>
 
-                <Button variant="ghost" size="icon" className="relative h-9 w-9" asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="relative h-9 w-9"
+                  asChild
+                >
                   <Link href="/notifications">
                     <Bell className="h-5 w-5" />
                     {unreadCount > 0 && (
@@ -167,7 +177,10 @@ export function Navbar() {
                     <LanguageSwitcher />
 
                     <DropdownMenuItem asChild>
-                      <Link href="/notifications/settings" className="flex items-center gap-2">
+                      <Link
+                        href="/notifications/settings"
+                        className="flex items-center gap-2"
+                      >
                         <Settings className="h-4 w-4" />
                         {t("notifications.settingsTitle")}
                       </Link>
@@ -181,7 +194,10 @@ export function Navbar() {
                     </DropdownMenuItem>
 
                     <DropdownMenuItem asChild>
-                      <Link href="/my-tournaments" className="flex items-center gap-2">
+                      <Link
+                        href="/my-tournaments"
+                        className="flex items-center gap-2"
+                      >
                         <Trophy className="h-4 w-4" />
                         {myTournamentsLabel}
                       </Link>
@@ -214,9 +230,16 @@ export function Navbar() {
               </>
             ) : (
               <>
-                <LanguageToggleButton />
+                <div className="shrink-0 scale-90 sm:scale-100">
+                  <LanguageToggleButton />
+                </div>
 
-                <Button asChild size="sm" className="h-10 rounded-xl px-3 text-sm">
+                <Button
+                  asChild
+                  size="sm"
+                  variant="outline"
+                  className="h-9 shrink-0 rounded-xl px-2 text-xs sm:h-10 sm:px-4 sm:text-sm"
+                >
                   <Link href={AUTH_ROUTES.signIn.player}>
                     {t("auth.signIn")}
                   </Link>
@@ -225,10 +248,12 @@ export function Navbar() {
                 <Button
                   asChild
                   size="sm"
-                  className="h-10 max-w-[96px] rounded-xl px-3 text-sm sm:max-w-none sm:px-4"
+                  className="h-9 max-w-[82px] shrink-0 rounded-xl px-2 text-xs sm:h-10 sm:max-w-none sm:px-4 sm:text-sm"
                 >
                   <Link href={AUTH_ROUTES.signUp.player}>
-                    <span className="hidden sm:inline">{t("auth.createAccount")}</span>
+                    <span className="hidden sm:inline">
+                      {t("auth.createAccount")}
+                    </span>
                     <span className="sm:hidden">Sign up</span>
                   </Link>
                 </Button>

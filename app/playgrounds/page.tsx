@@ -1,8 +1,8 @@
 "use client"
 
-import { Suspense, useState, useMemo } from "react"
+import { Suspense, useMemo, useState } from "react"
 import Image from "next/image"
-import { useRouter, useSearchParams } from "next/navigation"
+import { useRouter } from "next/navigation"
 import { Search, MapPin, Star, X, ChevronDown, Heart } from "lucide-react"
 import { AuthRequiredDialog } from "@/components/auth/auth-required-dialog"
 import { Button } from "@/components/ui/button"
@@ -32,15 +32,14 @@ const pitchSizes = ["5v5", "7v7", "11v11"]
 
 function PlaygroundsPageContent() {
   const router = useRouter()
-  const searchParams = useSearchParams()
-  const initialQuery = searchParams.get("q") || ""
   const { t, language } = useTranslate()
-  const { isFavorite, toggleFavorite, hasHydrated: favoritesHydrated } = useFavoritePlaygrounds()
+  const { isFavorite, toggleFavorite, hasHydrated: favoritesHydrated } =
+    useFavoritePlaygrounds()
   const { canProceed } = useRequireAuth()
   const dateLocale = useMemo(() => getDateFnsLocale(language), [language])
 
   const [showAuthDialog, setShowAuthDialog] = useState(false)
-  const [searchQuery, setSearchQuery] = useState(initialQuery)
+  const [searchQuery, setSearchQuery] = useState("")
   const [selectedGovernorate, setSelectedGovernorate] =
     useState<EgyptGovernorateKey>("all")
   const [selectedSizes, setSelectedSizes] = useState<string[]>([])
@@ -50,12 +49,11 @@ function PlaygroundsPageContent() {
 
   const playgroundQuery = useMemo(
     () => ({
-      search: searchQuery,
       governorateKey:
         selectedGovernorate === "all" ? undefined : selectedGovernorate,
       pitchSizes: selectedSizes,
     }),
-    [searchQuery, selectedGovernorate, selectedSizes],
+    [selectedGovernorate, selectedSizes],
   )
 
   const { playgrounds: allPlaygrounds, loading: catalogLoading } =
@@ -83,24 +81,40 @@ function PlaygroundsPageContent() {
   )
 
   const filteredAndSortedPlaygrounds = useMemo(() => {
-    let results = [...allPlaygrounds]
+    const q = searchQuery.trim().toLowerCase()
+
+    let results = allPlaygrounds.filter((playground) => {
+      if (!q) return true
+
+      const nameAr = playground.name.ar.toLowerCase()
+      const nameEn = playground.name.en.toLowerCase()
+      const locationAr = playground.location.ar.toLowerCase()
+      const locationEn = playground.location.en.toLowerCase()
+
+      return (
+        nameAr.includes(q) ||
+        nameEn.includes(q) ||
+        locationAr.includes(q) ||
+        locationEn.includes(q)
+      )
+    })
 
     switch (sortBy) {
       case "price-low":
-        results.sort((a, b) => a.price.min - b.price.min)
+        results = results.sort((a, b) => a.price.min - b.price.min)
         break
       case "price-high":
-        results.sort((a, b) => b.price.max - a.price.max)
+        results = results.sort((a, b) => b.price.max - a.price.max)
         break
       case "rating":
-        results.sort((a, b) => b.rating - a.rating)
+        results = results.sort((a, b) => b.rating - a.rating)
         break
       default:
         break
     }
 
     return results
-  }, [allPlaygrounds, sortBy])
+  }, [allPlaygrounds, searchQuery, sortBy])
 
   const toggleSize = (size: string) => {
     setSelectedSizes((prev) =>
@@ -123,6 +137,10 @@ function PlaygroundsPageContent() {
     selectedSizes.length > 0 ||
     Boolean(selectedDate) ||
     selectedTime !== "all"
+
+  const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
+  }
 
   const handleBookNow = (playgroundId: string) => {
     if (!canProceed("playground_book", { playgroundId })) {
@@ -159,44 +177,57 @@ function PlaygroundsPageContent() {
         </div>
 
         <div className="mb-8 space-y-5">
-          <div className="relative">
-            <Search className="absolute start-4 top-1/2 h-5 w-5 -translate-y-1/2 text-muted-foreground" />
+          <form onSubmit={handleSearchSubmit} className="relative">
+            <button
+              type="submit"
+              aria-label="Search"
+              className="absolute start-4 top-1/2 z-10 -translate-y-1/2 text-muted-foreground transition-colors hover:text-primary"
+            >
+              <Search className="h-5 w-5" />
+            </button>
+
             <Input
-              type="text"
+              type="search"
               placeholder={t("playgrounds.searchPlaceholder")}
               className="h-12 rounded-full ps-12 pe-4 text-base"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
-          </div>
+          </form>
 
           <div className="flex flex-wrap items-center gap-4">
             <Select
-  value={selectedGovernorate}
-  onValueChange={(value) =>
-    setSelectedGovernorate(value as EgyptGovernorateKey)
-  }
->
-  <SelectTrigger className="h-9 w-[200px] rounded-full sm:w-[220px]">
-    <SelectValue placeholder={t("playgrounds.selectGovernorate")} />
-  </SelectTrigger>
+              value={selectedGovernorate}
+              onValueChange={(value) =>
+                setSelectedGovernorate(value as EgyptGovernorateKey)
+              }
+            >
+              <SelectTrigger className="h-9 w-[200px] rounded-full sm:w-[220px]">
+                <SelectValue placeholder={t("playgrounds.selectGovernorate")} />
+              </SelectTrigger>
 
-  <SelectContent>
-    {EGYPT_GOVERNORATES.map((governorate) => (
-      <SelectItem key={governorate.key} value={governorate.key}>
-        {language === "ar" ? governorate.ar : governorate.en}
-      </SelectItem>
-    ))}
-  </SelectContent>
-</Select>
+              <SelectContent>
+                {EGYPT_GOVERNORATES.map((governorate) => (
+                  <SelectItem key={governorate.key} value={governorate.key}>
+                    {language === "ar" ? governorate.ar : governorate.en}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
             <div className="hidden h-6 w-px bg-border sm:block" />
 
             <Popover>
               <PopoverTrigger asChild>
-                <Button variant="outline" size="sm" className="h-9 gap-2 rounded-full">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-2 rounded-full"
+                >
                   {selectedDate
-                    ? format(selectedDate, "MMM d, yyyy", { locale: dateLocale })
+                    ? format(selectedDate, "MMM d, yyyy", {
+                        locale: dateLocale,
+                      })
                     : t("playgrounds.selectDate")}
                   <ChevronDown className="h-4 w-4" />
                 </Button>
@@ -305,10 +336,11 @@ function PlaygroundsPageContent() {
                     className="absolute end-3 top-3 flex h-9 w-9 items-center justify-center rounded-full bg-white/95 shadow-sm transition-all hover:scale-110"
                   >
                     <Heart
-                      className={`h-5 w-5 transition-colors ${favorite
+                      className={`h-5 w-5 transition-colors ${
+                        favorite
                           ? "fill-primary text-primary"
                           : "text-muted-foreground"
-                        }`}
+                      }`}
                     />
                   </button>
 
@@ -330,7 +362,9 @@ function PlaygroundsPageContent() {
 
                   <div className="mt-1 flex items-center gap-1 text-muted-foreground">
                     <MapPin className="h-4 w-4 shrink-0" />
-                    <span className="text-sm">{playground.location[language]}</span>
+                    <span className="text-sm">
+                      {playground.location[language]}
+                    </span>
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-1.5">
