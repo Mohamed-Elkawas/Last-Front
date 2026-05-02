@@ -1,6 +1,6 @@
 "use client"
 
-import { useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -19,10 +19,20 @@ import { AuthRequiredDialog } from "@/components/auth/auth-required-dialog"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
+import {
+  Empty,
+  EmptyContent,
+  EmptyDescription,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from "@/components/ui/empty"
 import { Input } from "@/components/ui/input"
 import { useAppTranslations } from "@/hooks/use-app-translations"
 import { useHomeFeatured } from "@/hooks/use-home-featured"
+import { getPopularFields } from "@/lib/services/fields.api"
 import { useRequireAuth } from "@/lib/auth/require-auth"
+import type { Playground } from "@/lib/types/playground"
 
 export default function HomePage() {
   const router = useRouter()
@@ -31,8 +41,48 @@ export default function HomePage() {
   const { language, hasHydrated, messages, t, isArabic } = useAppTranslations()
   const { data: featured, loading: featuredLoading } = useHomeFeatured()
   const { canProceed } = useRequireAuth()
+  const [popularFields, setPopularFields] = useState<Playground[]>([])
+  const [popularLoading, setPopularLoading] = useState(true)
+  const [popularError, setPopularError] = useState<Error | null>(null)
 
   const ArrowIcon = isArabic ? ArrowLeft : ArrowRight
+  const labels = {
+    noFields: isArabic ? "لا توجد ملاعب متاحة" : "No fields available",
+    noFieldsBody: isArabic
+      ? "ستظهر الملاعب الشائعة هنا عند توفر ملاعب معتمدة."
+      : "Popular fields will appear here once approved fields are available.",
+    noUpcoming: isArabic ? "لا توجد بطولات قادمة" : "No upcoming tournaments",
+    noUpcomingBody: isArabic
+      ? "ستظهر البطولات القادمة هنا عند توفرها من الخادم."
+      : "Upcoming tournaments will appear here once the backend returns published items.",
+  }
+
+  useEffect(() => {
+    let isMounted = true
+    setPopularLoading(true)
+    setPopularError(null)
+
+    getPopularFields(3)
+      .then((fields) => {
+        if (isMounted) {
+          setPopularFields(fields)
+        }
+      })
+      .catch((error) => {
+        if (!isMounted) return
+        setPopularError(error instanceof Error ? error : new Error(String(error)))
+        setPopularFields([])
+      })
+      .finally(() => {
+        if (isMounted) {
+          setPopularLoading(false)
+        }
+      })
+
+    return () => {
+      isMounted = false
+    }
+  }, [])
 
   const searchHref = useMemo(() => {
     return `/playgrounds${searchQuery ? `?q=${encodeURIComponent(searchQuery)}` : ""}`
@@ -47,7 +97,7 @@ export default function HomePage() {
     router.push(`/playgrounds/${playgroundId}/book`)
   }
 
-  if (!hasHydrated || featuredLoading || !featured) {
+  if (!hasHydrated || featuredLoading || popularLoading || !featured) {
     return (
       <AppShell>
         <div className="page-container py-10">
@@ -57,7 +107,7 @@ export default function HomePage() {
     )
   }
 
-  const { playgrounds, tournaments: upcomingTournaments } = featured
+  const { tournaments: upcomingTournaments } = featured
 
   return (
     <AppShell>
@@ -167,6 +217,11 @@ export default function HomePage() {
             <p className="section-subtitle">
               {messages.homePage.popularPlaygroundsSub}
             </p>
+            {popularError && popularFields.length === 0 && (
+              <p className="mt-3 text-sm text-destructive">
+                {popularError.message || t("common.unexpectedError")}
+              </p>
+            )}
           </div>
 
           <Button variant="ghost" asChild className="gap-2 rounded-2xl">
@@ -177,60 +232,83 @@ export default function HomePage() {
           </Button>
         </div>
 
-        <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
-          {playgrounds.map((playground) => (
-            <Card
-              key={playground.id}
-              className="group overflow-hidden rounded-3xl border bg-card shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl"
-            >
-              <div className="relative h-52 overflow-hidden">
-                <Image
-                  src={playground.imageUrl}
-                  alt={playground.name[language]}
-                  fill
-                  className="object-cover transition-transform duration-500 group-hover:scale-105"
-                />
+        {popularFields.length === 0 ? (
+          <Card className="mt-8 rounded-3xl">
+            <CardContent className="p-8">
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <MapPin className="h-5 w-5" />
+                  </EmptyMedia>
+                  <EmptyTitle>{labels.noFields}</EmptyTitle>
+                  <EmptyDescription>
+                    {labels.noFieldsBody}
+                  </EmptyDescription>
+                </EmptyHeader>
+                <EmptyContent>
+                  <Button variant="outline" asChild>
+                    <Link href="/playgrounds">{messages.common.viewAll}</Link>
+                  </Button>
+                </EmptyContent>
+              </Empty>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="mt-8 grid gap-6 md:grid-cols-2 xl:grid-cols-3">
+            {popularFields.map((playground) => (
+              <Card
+                key={playground.id}
+                className="group overflow-hidden rounded-3xl border bg-card shadow-sm transition-all hover:-translate-y-1 hover:shadow-xl"
+              >
+                <div className="relative h-52 overflow-hidden">
+                  <Image
+                    src={playground.imageUrl}
+                    alt={playground.name[language]}
+                    fill
+                    className="object-cover transition-transform duration-500 group-hover:scale-105"
+                  />
 
-                <div className="absolute end-3 top-3 flex items-center gap-1 rounded-full bg-white/90 px-3 py-1.5 backdrop-blur-sm">
-                  <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
-                  <span className="text-sm font-semibold">{playground.rating}</span>
+                  <div className="absolute end-3 top-3 flex items-center gap-1 rounded-full bg-white/90 px-3 py-1.5 backdrop-blur-sm">
+                    <Star className="h-4 w-4 fill-yellow-400 text-yellow-400" />
+                    <span className="text-sm font-semibold">{playground.rating}</span>
+                  </div>
                 </div>
-              </div>
 
-              <CardContent className="p-5">
-                <h3 className="text-lg font-bold">{playground.name[language]}</h3>
+                <CardContent className="p-5">
+                  <h3 className="text-lg font-bold">{playground.name[language]}</h3>
 
-                <div className="mt-2 flex items-center gap-2 text-muted-foreground">
-                  <MapPin className="h-4 w-4" />
-                  <span className="text-sm">{playground.location[language]}</span>
-                </div>
-
-                <div className="mt-4 flex flex-wrap gap-2">
-                  {playground.pitchSizes.map((size) => (
-                    <Badge key={size} variant="secondary" className="rounded-full">
-                      {size}
-                    </Badge>
-                  ))}
-                </div>
-
-                <div className="mt-5 flex items-center justify-between gap-4">
-                  <div>
-                    <div className="text-lg font-extrabold text-primary">
-                      {playground.price.min}-{playground.price.max}
-                    </div>
-                    <div className="text-sm text-muted-foreground">
-                      {t("homePage.pricePerHour")}
-                    </div>
+                  <div className="mt-2 flex items-center gap-2 text-muted-foreground">
+                    <MapPin className="h-4 w-4" />
+                    <span className="text-sm">{playground.location[language]}</span>
                   </div>
 
-                  <Button size="sm" className="rounded-2xl" onClick={() => handleBookNow(playground.id)}>
-                    {messages.common.bookNow}
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                  <div className="mt-4 flex flex-wrap gap-2">
+                    {playground.pitchSizes.map((size) => (
+                      <Badge key={size} variant="secondary" className="rounded-full">
+                        {size}
+                      </Badge>
+                    ))}
+                  </div>
+
+                  <div className="mt-5 flex items-center justify-between gap-4">
+                    <div>
+                      <div className="text-lg font-extrabold text-primary">
+                        {playground.price.min}-{playground.price.max}
+                      </div>
+                      <div className="text-sm text-muted-foreground">
+                        {t("homePage.pricePerHour")}
+                      </div>
+                    </div>
+
+                    <Button size="sm" className="rounded-2xl" onClick={() => handleBookNow(playground.id)}>
+                      {messages.common.bookNow}
+                    </Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </section>
 
       <section className="page-container pb-16">
@@ -250,81 +328,102 @@ export default function HomePage() {
           </Button>
         </div>
 
-        <div className="mt-8 grid gap-6 md:grid-cols-2">
-          {upcomingTournaments.map((tournament) => {
-            const progress = (tournament.teamsJoined / tournament.maxTeams) * 100
-            const isFull = tournament.status === "full"
+        {upcomingTournaments.length === 0 ? (
+          <Card className="mt-8 rounded-3xl">
+            <CardContent className="p-8">
+              <Empty>
+                <EmptyHeader>
+                  <EmptyMedia variant="icon">
+                    <Trophy className="h-5 w-5" />
+                  </EmptyMedia>
+                  <EmptyTitle>{labels.noUpcoming}</EmptyTitle>
+                  <EmptyDescription>
+                    {labels.noUpcomingBody}
+                  </EmptyDescription>
+                </EmptyHeader>
+              </Empty>
+            </CardContent>
+          </Card>
+        ) : (
+          <div className="mt-8 grid gap-6 md:grid-cols-2">
+            {upcomingTournaments.map((tournament) => {
+              const progress =
+                tournament.numberOfTeams > 0
+                  ? (tournament.teamsJoined / tournament.numberOfTeams) * 100
+                  : 0
+              const isFull = tournament.status === "full"
 
-            return (
-              <Card
-                key={tournament.id}
-                className="rounded-3xl border bg-card shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg"
-              >
-                <CardContent className="p-6">
-                  <div className="flex items-start justify-between gap-4">
-                    <div>
-                      <Badge
-                        variant={isFull ? "secondary" : "default"}
-                        className={!isFull ? "bg-primary text-primary-foreground" : ""}
-                      >
-                        {isFull ? t("common.full") : t("common.open")}
-                      </Badge>
+              return (
+                <Card
+                  key={tournament.id}
+                  className="rounded-3xl border bg-card shadow-sm transition-all hover:-translate-y-1 hover:shadow-lg"
+                >
+                  <CardContent className="p-6">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <Badge
+                          variant={isFull ? "secondary" : "default"}
+                          className={!isFull ? "bg-primary text-primary-foreground" : ""}
+                        >
+                          {isFull ? t("common.full") : t("common.open")}
+                        </Badge>
 
-                      <h3 className="mt-3 text-xl font-bold">
-                        {tournament.name[language]}
-                      </h3>
-                      <p className="mt-1 text-sm text-muted-foreground">
-                        {tournament.scheduleLabel[language]}
-                      </p>
+                        <h3 className="mt-3 text-xl font-bold">
+                          {tournament.name[language]}
+                        </h3>
+                        <p className="mt-1 text-sm text-muted-foreground">
+                          {tournament.type}
+                        </p>
+                      </div>
+
+                      <div className="text-end">
+                        <p className="text-sm text-muted-foreground">
+                          {messages.common.prizePool}
+                        </p>
+                        <p className="text-lg font-extrabold text-primary">
+                          {tournament.prize[language] || tournament.prize.en || tournament.prize.ar || "-"}
+                        </p>
+                      </div>
                     </div>
 
-                    <div className="text-end">
-                      <p className="text-sm text-muted-foreground">
-                        {messages.common.prizePool}
-                      </p>
-                      <p className="text-lg font-extrabold text-primary">
-                        {tournament.prize.first.toLocaleString()} {t("common.egp")}
-                      </p>
-                    </div>
-                  </div>
+                    <div className="mt-5">
+                      <div className="flex items-center justify-between text-sm">
+                        <span className="text-muted-foreground">
+                          {messages.common.teamsJoined}
+                        </span>
+                        <span className="font-semibold">
+                          {tournament.teamsJoined}/{tournament.numberOfTeams}
+                        </span>
+                      </div>
 
-                  <div className="mt-5">
-                    <div className="flex items-center justify-between text-sm">
-                      <span className="text-muted-foreground">
-                        {messages.common.teamsJoined}
-                      </span>
-                      <span className="font-semibold">
-                        {tournament.teamsJoined}/{tournament.maxTeams}
-                      </span>
+                      <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
+                        <div
+                          className="h-full rounded-full bg-primary transition-all"
+                          style={{ width: `${progress}%` }}
+                        />
+                      </div>
                     </div>
 
-                    <div className="mt-2 h-2 overflow-hidden rounded-full bg-muted">
-                      <div
-                        className="h-full rounded-full bg-primary transition-all"
-                        style={{ width: `${progress}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  <Button
-                    className="mt-5 w-full rounded-2xl"
-                    variant={isFull ? "secondary" : "default"}
-                    disabled={isFull}
-                    asChild={!isFull}
-                  >
-                    {isFull ? (
-                      <span>{messages.common.tournamentFull}</span>
-                    ) : (
-                      <Link href={`/tournaments/${tournament.id}`}>
-                        {messages.common.joinTournament}
-                      </Link>
-                    )}
-                  </Button>
-                </CardContent>
-              </Card>
-            )
-          })}
-        </div>
+                    <Button
+                      className="mt-5 w-full rounded-2xl"
+                      variant={isFull ? "secondary" : "default"}
+                      disabled={isFull}
+                      asChild={!isFull}
+                    >
+                      {isFull ? (
+                        <span>{messages.common.tournamentFull}</span>
+                      ) : (
+                        <Link href={`/tournaments/${tournament.id}`}>
+                          {messages.common.joinTournament}
+                        </Link>
+                      )}
+                    </Button>
+                  </CardContent>
+                </Card>
+              )
+            })}
+          </div>
+        )}
       </section>
 
       <AuthRequiredDialog open={showAuthDialog} onOpenChange={setShowAuthDialog} cancelHref="/" />

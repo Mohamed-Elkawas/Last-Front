@@ -229,7 +229,7 @@ function getDashboardLabels(isArabic: boolean) {
     totalRevenue: isArabic ? "إجمالي الإيرادات" : "Total Revenue",
     bookingOccupancy: isArabic ? "نسبة إشغال الحجوزات" : "Booking Occupancy",
     newPlayers: isArabic ? "لاعبون جدد" : "New Players",
-    returningPlayers: isArabic ? "لاعبون عائدون" : "Returning Players",
+    returningPlayers: isArabic ? "معدل الاستخدام" : "Utilization Rate",
     noDataYet: isArabic ? "لا توجد بيانات بعد" : "No data yet",
 
     revenueHint: isArabic

@@ -19,11 +19,31 @@ export const notificationsService = {
     if (!getToken()) return []
 
     try {
-      const res = await http<ApiResponse<AppNotification[]>>("/notifications")
+      const res = await http<ApiResponse<AppNotification[]>>("/api/notifications")
       return res.data ?? []
     } catch (error) {
+      if (error instanceof Error && /(404|not found)/i.test(error.message)) {
+        return []
+      }
+
       console.warn("Failed to load remote notifications", error)
       return []
+    }
+  },
+
+  async getCount(): Promise<number> {
+    if (!getToken()) return 0
+
+    try {
+      const res = await http<ApiResponse<{ unreadCount: number }>>("/api/notifications/count")
+      return res.data?.unreadCount ?? 0
+    } catch (error) {
+      if (error instanceof Error && /(404|not found)/i.test(error.message)) {
+        return 0
+      }
+
+      console.warn("Failed to load remote notification count", error)
+      return 0
     }
   },
 

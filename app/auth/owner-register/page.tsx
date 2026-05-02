@@ -143,8 +143,11 @@ export default function OwnerRegisterPage() {
         gender: formData.gender,
         playgroundAddress: formData.address.trim(),
 
-        photoUrl: null,
-        businessLicenseUrl: formData.license?.name || "",
+      photoUrl: "https://placehold.co/100",
+        businessLicenseUrl:
+          formData.license
+            ? "https://placehold.co/300x200"
+            : "",
       })
       sessionStorage.setItem(
         PENDING_VERIFICATION_KEY,

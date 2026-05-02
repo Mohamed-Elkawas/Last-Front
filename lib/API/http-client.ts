@@ -124,6 +124,48 @@ async function mockHandler<T>(url: string, options: RequestInit = {}): Promise<T
     } as T
   }
 
+  // ================= FIELDS =================
+  if (url.includes("/api/fields")) {
+    // All fields endpoints return empty arrays in mock mode.
+    // Real API integration should handle actual data.
+    if (url.includes("/api/fields/popular") || url.includes("/api/fields/search") || url.includes("/api/fields/pending")) {
+      return {
+        isSuccess: true,
+        message: null,
+        data: [],
+        errors: null,
+      } as T
+    }
+
+    // GET /api/fields/{id}
+    if (/\/api\/fields\/[^\/]+$/.test(url)) {
+      return {
+        isSuccess: true,
+        message: null,
+        data: null,
+        errors: null,
+      } as T
+    }
+
+    // GET /api/fields/owner/{ownerId}
+    if (url.includes("/api/fields/owner/")) {
+      return {
+        isSuccess: true,
+        message: null,
+        data: [],
+        errors: null,
+      } as T
+    }
+
+    // GET /api/fields (default list) and POST/PUT/DELETE endpoints
+    return {
+      isSuccess: true,
+      message: null,
+      data: [],
+      errors: null,
+    } as T
+  }
+
   // ================= PLAYGROUNDS =================
   if (url.includes("/playgrounds") || url.includes("/api/playgrounds")) {
     return {
@@ -230,11 +272,8 @@ async function mockHandler<T>(url: string, options: RequestInit = {}): Promise<T
   ) {
     return {
       isSuccess: true,
-      message: "Mock tournament action success",
-      data: {
-        id: `tournament-registration-${Date.now()}`,
-        status: "pending_payment",
-      },
+      message: null,
+      data: null,
       errors: null,
     } as T
   }
@@ -243,34 +282,7 @@ async function mockHandler<T>(url: string, options: RequestInit = {}): Promise<T
     return {
       isSuccess: true,
       message: null,
-      data: [
-        {
-          id: "t-1",
-          name: { en: "Ramadan Cup", ar: "كأس رمضان" },
-          status: "open",
-          entryFee: 500,
-          maxTeams: 16,
-          registeredTeams: 8,
-          date: "2026-05-10",
-          playground: {
-            id: "pg-1",
-            name: { en: "El Geish Stadium", ar: "ملعب الجيش" },
-          },
-        },
-        {
-          id: "t-2",
-          name: { en: "Champions League", ar: "دوري الأبطال" },
-          status: "open",
-          entryFee: 700,
-          maxTeams: 12,
-          registeredTeams: 5,
-          date: "2026-05-20",
-          playground: {
-            id: "pg-2",
-            name: { en: "Smart Arena", ar: "سمارت أرينا" },
-          },
-        },
-      ],
+      data: [],
       errors: null,
     } as T
   }
@@ -359,12 +371,35 @@ export async function http<T>(url: string, options: RequestInit = {}): Promise<T
     data,
   })
 
+  // Handle 4xx responses silently (except for isSuccess: false check)
   if (!res.ok) {
-    const message = getErrorMessage(data, res.statusText || `API Error (${res.status})`)
-    console.error(`[HTTP] Error response (${res.status}):`, message)
-    throw new Error(message)
+    if (res.status === 404) {
+      return {
+        data: null,
+        status: 404,
+        statusText: res.statusText,
+        message: getErrorMessage(data, res.statusText || "Not Found"),
+        errors: typeof data === "object" && data !== null ? (data as ApiErrorShape).errors : null,
+      } as T
+    }
+
+    if (res.status >= 500) {
+      // Throw for server errors (5xx)
+      const message = getErrorMessage(data, res.statusText || `API Error (${res.status})`)
+      console.error(`[HTTP] Error response (${res.status}):`, message)
+      throw new Error(message)
+    }
+
+    return {
+      data: null,
+      status: res.status,
+      statusText: res.statusText,
+      message: getErrorMessage(data, res.statusText || `API Error (${res.status})`),
+      errors: typeof data === "object" && data !== null ? (data as ApiErrorShape).errors : null,
+    } as T
   }
 
+  // Check API-level error (isSuccess: false in response body)
   if (
     typeof data === "object" &&
     data !== null &&

@@ -1,14 +1,19 @@
-import { repositoryGetHomeFeatured } from "@/lib/repositories/local/home-featured.repository"
 import type { Playground } from "@/lib/types/playground"
-import type { TournamentSummary } from "@/lib/types/tournament"
-import { mockDelay } from "@/lib/services/mock-delay"
+import {
+  getUpcomingTournaments,
+  type TournamentRecord,
+} from "@/lib/services/tournaments.api"
 
 export type HomeFeaturedContent = {
   playgrounds: Playground[]
-  tournaments: TournamentSummary[]
+  tournaments: TournamentRecord[]
 }
 
 export async function getHomeFeatured(): Promise<HomeFeaturedContent> {
-  await mockDelay(80)
-  return repositoryGetHomeFeatured()
+  const tournaments = await getUpcomingTournaments(2)
+
+  return {
+    playgrounds: [],
+    tournaments,
+  }
 }

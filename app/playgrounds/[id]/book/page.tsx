@@ -70,7 +70,7 @@ export default function BookingPage() {
   const { user } = useAuth()
   const { balance: pointsBalance, hasHydrated: pointsHydrated } = usePoints()
   const { t, language } = useTranslate()
-  const { playground, loading: playgroundLoading } = usePlayground(id)
+  const { playground, loading: playgroundLoading, error: playgroundError } = usePlayground(id)
   const { slots: slotDefs, loading: slotsLoading } =
     usePlaygroundBookingSlotDefinitions()
   const dateLocale = useMemo(() => getDateFnsLocale(language), [language])
@@ -338,12 +338,24 @@ export default function BookingPage() {
     router.push(`/playgrounds/${id}/book/payment?bookingId=${bookingId}`)
   }
 
-  if (playgroundLoading || slotsLoading || !playground || !pointsHydrated) {
+  if (playgroundLoading || slotsLoading || !pointsHydrated) {
     return (
       <AppShell>
         <div className="mx-auto max-w-5xl px-6 py-8">
           <p className="text-sm text-muted-foreground">
             {t("common.loading")}
+          </p>
+        </div>
+      </AppShell>
+    )
+  }
+
+  if (!playground) {
+    return (
+      <AppShell>
+        <div className="mx-auto max-w-5xl px-6 py-8">
+          <p className="text-sm text-muted-foreground">
+            {playgroundError?.message || t("common.unexpectedError")}
           </p>
         </div>
       </AppShell>

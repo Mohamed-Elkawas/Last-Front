@@ -3,6 +3,7 @@ import type { TournamentPrizeBreakdown } from "@/lib/types/tournament"
 
 export type OwnerTournamentRecord = {
   id: string
+  ownerId?: string
   createdAt: number
   name: LocalizedString
   description: LocalizedString
@@ -15,5 +16,5 @@ export type OwnerTournamentRecord = {
   venueName: LocalizedString
   prize: TournamentPrizeBreakdown
   published: boolean
-status: "active" | "ended" | "completed"
+  status: "active" | "ended" | "completed"
 }

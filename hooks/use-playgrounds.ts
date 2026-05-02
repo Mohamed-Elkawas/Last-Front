@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react"
 import type { Playground, PlaygroundListQuery } from "@/lib/types/playground"
-import { getPlaygroundById, listPlaygrounds } from "@/lib/services/playgrounds.service"
+import { getPlaygroundById as getLocalPlaygroundById, listPlaygrounds } from "@/lib/services/playgrounds.service"
+import { getFieldById } from "@/lib/services/fields.api"
 import { usePlaygroundsStore } from "@/lib/stores/playgrounds.store"
 
 export function usePlaygroundsCatalog(query: PlaygroundListQuery = {}) {
@@ -36,23 +37,27 @@ export function usePlayground(id: string | undefined) {
   const [loading, setLoading] = useState(Boolean(id))
   const [error, setError] = useState<Error | null>(null)
 
-  const userPlaygrounds = usePlaygroundsStore((state) => state.userPlaygrounds)
-
   useEffect(() => {
     if (!id) {
       setPlayground(null)
       setLoading(false)
+      setError(null)
       return
     }
 
     setLoading(true)
     setError(null)
 
-    getPlaygroundById(id)
-      .then(setPlayground)
-      .catch((e) => setError(e instanceof Error ? e : new Error(String(e))))
+    getFieldById(id)
+      .then((field) => {
+        setPlayground(field)
+      })
+      .catch((e) => {
+        setError(e instanceof Error ? e : new Error(String(e)))
+        setPlayground(null)
+      })
       .finally(() => setLoading(false))
-  }, [id, userPlaygrounds])
+  }, [id])
 
   return { playground, loading, error }
 }

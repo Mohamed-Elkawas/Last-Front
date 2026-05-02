@@ -118,7 +118,7 @@ export default function RootLayout({
       suppressHydrationWarning
       className={`${geistSans.variable} ${geistMono.variable} ${cairo.variable} ${initialFontClass}`}
     >
-      <body className="min-h-screen bg-background text-foreground antialiased">
+      <body className="min-h-screen overflow-x-hidden bg-background text-foreground antialiased">
         <Script id="app-language-sync" strategy="beforeInteractive">
           {languageSyncScript}
         </Script>

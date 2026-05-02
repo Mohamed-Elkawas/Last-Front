@@ -1,69 +1,87 @@
 "use client"
 
+import type { ReactNode } from "react"
 import { useState } from "react"
-import Image from "next/image"
 import Link from "next/link"
-import { useParams, useRouter } from "next/navigation"
-import {
-  ArrowLeft,
-  MapPin,
-  Calendar,
-  Trophy,
-  Users,
-  Star,
-  Medal,
-  Target,
-} from "lucide-react"
+import { useParams, useRouter, useSearchParams } from "next/navigation"
+import { ArrowLeft, Calendar, MapPin, Trophy, Users } from "lucide-react"
 
-import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
-import { Progress } from "@/components/ui/progress"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { AppShell } from "@/components/layout/app-shell"
 import { AuthRequiredDialog } from "@/components/auth/auth-required-dialog"
-
+import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { useTranslate } from "@/hooks/use-translate"
 import { useTournamentDetail } from "@/hooks/use-tournaments"
 import { useRequireAuth } from "@/lib/auth/require-auth"
 
-import type { TournamentStatus } from "@/lib/types/tournament"
+function formatDate(value: string, locale: string) {
+  if (!value) return "-"
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+
+  return new Intl.DateTimeFormat(locale, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  }).format(date)
+}
+
+function getStatusLabel(status: string, isArabic: boolean, t: (key: string) => string) {
+  const normalized = status.toLowerCase()
+
+  if (normalized === "open" || normalized === "full" || normalized === "completed") {
+    return t(`tournaments.${normalized}`)
+  }
+
+  if (normalized === "live") {
+    return t("tournaments.live")
+  }
+
+  if (normalized === "draft") {
+    return isArabic ? "مسودة" : "Draft"
+  }
+
+  if (normalized === "closed") {
+    return isArabic ? "مغلقة" : "Closed"
+  }
+
+  if (normalized === "cancelled") {
+    return isArabic ? "ملغاة" : "Cancelled"
+  }
+
+  return status || "-"
+}
 
 export default function TournamentDetailsPage() {
   const router = useRouter()
   const params = useParams()
+  const searchParams = useSearchParams()
+  const { t, language, isArabic } = useTranslate()
+  const { canProceed } = useRequireAuth()
+  const [showAuthDialog, setShowAuthDialog] = useState(false)
 
   const id =
     typeof params.id === "string"
       ? params.id
       : Array.isArray(params.id)
-      ? params.id[0]
-      : undefined
+        ? params.id[0]
+        : undefined
 
-  const { tournament, loading } = useTournamentDetail(id)
-  const { t, language } = useTranslate()
-  const { canProceed } = useRequireAuth()
+  const { tournament, loading, error } = useTournamentDetail(id)
 
-  const [showAuthDialog, setShowAuthDialog] = useState(false)
-
-  // 🔥 i18n helper
-  function getText(value: any) {
-    if (!value) return "-"
-    if (typeof value === "string") return value
-    return value[language] || value.en || value.ar || "-"
-  }
-
-  // 🛡️ safe values
-  const safeJoined = tournament?.teamsJoined || 0
-  const safeMax = tournament?.maxTeams || 1
-
-  const progress = (safeJoined / safeMax) * 100
-  const spotsLeft = safeMax - safeJoined
-
-  const tournamentStatusLabel = (status: TournamentStatus) => {
-    if (status === "open") return t("tournaments.open")
-    if (status === "full") return t("tournaments.full")
-    return t("tournaments.completed")
+  const labels = {
+    notFound: isArabic ? "البطولة غير موجودة" : "Tournament not found",
+    description: isArabic ? "الوصف" : "Description",
+    type: isArabic ? "النوع" : "Type",
+    price: isArabic ? "السعر" : "Price",
+    prize: isArabic ? "الجائزة" : "Prize",
+    fieldId: isArabic ? "معرّف الملعب" : "Field ID",
+    teams: isArabic ? "عدد الفرق" : "Teams",
+    joined: isArabic ? "المنضمّون" : "Joined",
+    joinedBanner: isArabic ? "تم الانضمام إلى البطولة بنجاح" : "You joined the tournament successfully",
   }
 
   const handleJoin = () => {
@@ -77,23 +95,45 @@ export default function TournamentDetailsPage() {
     router.push(`/tournaments/${id}/join`)
   }
 
-  if (loading || !tournament) {
+  if (loading) {
     return (
       <AppShell>
-        <div className="mx-auto max-w-6xl px-6 py-8">
-          <p className="text-sm text-muted-foreground">
-            {t("common.loading")}
-          </p>
+        <div className="mx-auto max-w-6xl px-6 py-8 text-sm text-muted-foreground">
+          {t("common.loading")}
         </div>
       </AppShell>
     )
   }
 
+  if (!tournament) {
+    return (
+      <AppShell>
+        <div className="mx-auto max-w-6xl px-6 py-8">
+          <Button variant="ghost" className="mb-6 gap-2" asChild>
+            <Link href="/tournaments">
+              <ArrowLeft className="h-4 w-4" />
+              {t("tournamentDetail.back")}
+            </Link>
+          </Button>
+          <Card>
+            <CardContent className="p-8">
+              <h1 className="text-2xl font-semibold">{labels.notFound}</h1>
+              <p className="mt-2 text-sm text-muted-foreground">
+                {error?.message || labels.notFound}
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </AppShell>
+    )
+  }
+
+  const locale = language === "ar" ? "ar-EG" : "en-US"
+  const joinedBanner = searchParams.get("joined") === "1"
+
   return (
     <AppShell>
       <div className="mx-auto max-w-6xl px-6 py-8">
-
-        {/* Back */}
         <Button variant="ghost" className="mb-6 gap-2" asChild>
           <Link href="/tournaments">
             <ArrowLeft className="h-4 w-4" />
@@ -101,189 +141,84 @@ export default function TournamentDetailsPage() {
           </Link>
         </Button>
 
+        {joinedBanner ? (
+          <div className="mb-6 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-700">
+            {labels.joinedBanner}
+          </div>
+        ) : null}
+
         <div className="grid gap-8 lg:grid-cols-3">
-
-          {/* MAIN */}
-          <div className="lg:col-span-2 space-y-6">
-
-            {/* Hero */}
-            <div className="relative h-64 overflow-hidden rounded-xl sm:h-80">
-              <Image
-                src={tournament.imageUrl}
-                alt={getText(tournament.name)}
-                fill
-                className="object-cover"
-              />
-
-              <div className="absolute inset-0 bg-gradient-to-t from-black/60 to-transparent" />
-
-              <div className="absolute bottom-4 start-4 end-4 text-white">
-                <Badge className="mb-2">
-                  {tournamentStatusLabel(tournament.status)}
-                </Badge>
-
-                <h1 className="text-2xl font-bold sm:text-3xl">
-                  {getText(tournament.name)}
-                </h1>
-
-                <div className="mt-2 flex items-center gap-4 text-white/80">
-                  <div className="flex items-center gap-1">
-                    <MapPin className="h-4 w-4" />
-                    {getText(tournament.venueName)}
-                  </div>
-
-                  <div className="flex items-center gap-1">
-                    <Calendar className="h-4 w-4" />
-                    {getText(tournament.startDateLabel)}
+          <div className="space-y-6 lg:col-span-2">
+            <Card>
+              <CardContent className="space-y-5 p-6">
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <Badge variant="secondary">{getStatusLabel(tournament.status, isArabic, t)}</Badge>
+                    <h1 className="mt-3 text-3xl font-bold">
+                      {tournament.name[language] || tournament.name.en || tournament.name.ar}
+                    </h1>
                   </div>
                 </div>
-              </div>
-            </div>
-
-            {/* About */}
-            <Card>
-              <CardHeader>
-                <CardTitle>{t("tournamentDetail.aboutTitle")}</CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-4">
-                <Badge variant="secondary">
-                  {getText(tournament.formatLabel)}
-                </Badge>
-
-                <p className="text-muted-foreground">
-                  {getText(tournament.description)}
-                </p>
 
                 <div className="grid gap-4 sm:grid-cols-2">
-                  <InfoBox
-                    label={t("tournamentDetail.startDate")}
-                    value={getText(tournament.startDateLabel)}
-                  />
+                  <div className="flex items-center gap-3 rounded-lg bg-muted p-3">
+                    <Calendar className="h-5 w-5 text-primary" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">{t("tournamentDetail.startDate")}</p>
+                      <p className="font-medium">{formatDate(tournament.startDate, locale)}</p>
+                    </div>
+                  </div>
 
-                  <InfoBox
-                    label={t("tournamentDetail.endDate")}
-                    value={getText(tournament.endDateLabel)}
-                  />
+                  <div className="flex items-center gap-3 rounded-lg bg-muted p-3">
+                    <Calendar className="h-5 w-5 text-primary" />
+                    <div>
+                      <p className="text-sm text-muted-foreground">{t("tournamentDetail.endDate")}</p>
+                      <p className="font-medium">{formatDate(tournament.endDate, locale)}</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <InfoBox label={labels.type} value={tournament.type || "-"} icon={<Trophy className="h-5 w-5 text-primary" />} />
+                  <InfoBox label={labels.fieldId} value={tournament.fieldId !== null ? String(tournament.fieldId) : "-"} icon={<MapPin className="h-5 w-5 text-primary" />} />
+                  <InfoBox label={labels.teams} value={String(tournament.numberOfTeams)} icon={<Users className="h-5 w-5 text-primary" />} />
+                  <InfoBox label={labels.joined} value={String(tournament.teamsJoined)} icon={<Users className="h-5 w-5 text-primary" />} />
                 </div>
               </CardContent>
             </Card>
 
-            {/* Prizes */}
             <Card>
               <CardHeader>
-                <CardTitle>
-                  <Trophy className="inline mr-2" />
-                  {t("tournamentDetail.prizesTitle")}
-                </CardTitle>
+                <CardTitle>{labels.description}</CardTitle>
               </CardHeader>
-
-              <CardContent className="grid gap-4 sm:grid-cols-2">
-                <PrizeItem label={t("tournamentDetail.firstPlace")} value={tournament.prize.first} />
-                <PrizeItem label={t("tournamentDetail.secondPlace")} value={tournament.prize.second} />
-                <PrizeItem label={t("tournamentDetail.bestPlayer")} value={tournament.prize.bestPlayer} />
-                <PrizeItem label={t("tournamentDetail.bestGoalkeeper")} value={tournament.prize.bestGoalkeeper} />
-              </CardContent>
-            </Card>
-
-            {/* Points */}
-            <Card>
-              <CardHeader>
-                <CardTitle>{t("tournamentDetail.pointsTitle")}</CardTitle>
-              </CardHeader>
-
-              <CardContent className="grid gap-4 sm:grid-cols-3 text-center">
-                <PointItem value={tournament.pointsEarned.participation} label={t("tournamentDetail.participation")} />
-                <PointItem value={tournament.pointsEarned.runnerUp} label={t("tournamentDetail.runnerUp")} />
-                <PointItem value={tournament.pointsEarned.winner} label={t("tournamentDetail.winner")} />
-              </CardContent>
-            </Card>
-
-            {/* Teams */}
-            <Card>
-              <CardHeader>
-                <CardTitle>
-                  {t("tournamentDetail.registeredTeams")} ({tournament.registeredTeams.length})
-                </CardTitle>
-              </CardHeader>
-
-              <CardContent className="space-y-3">
-                {tournament.registeredTeams.map((team: any, i: number) => (
-                  <div key={i} className="flex justify-between border p-3 rounded-lg">
-                    <div>
-                      <p className="font-medium">{getText(team.name)}</p>
-                      <p className="text-sm text-muted-foreground">
-                        {team.players} players
-                      </p>
-                    </div>
-
-                    <div className="flex items-center gap-2">
-                      <Avatar>
-                        <AvatarImage src={team.captain.avatar || undefined} />
-                        <AvatarFallback>
-                          {team.captain.username?.[0]}
-                        </AvatarFallback>
-                      </Avatar>
-                      @{team.captain.username}
-                    </div>
-                  </div>
-                ))}
+              <CardContent>
+                <p className="text-muted-foreground">
+                  {tournament.description[language] || tournament.description.en || tournament.description.ar || "-"}
+                </p>
               </CardContent>
             </Card>
           </div>
 
-          {/* SIDEBAR */}
           <div>
             <Card className="sticky top-24">
-              <CardContent className="p-6">
-
-                <p className="text-sm text-muted-foreground">
-                  {t("tournamentDetail.registrationFee")}
-                </p>
-
-                <p className="text-3xl font-bold text-primary">
-                  {tournament.entryFeePerTeam.toLocaleString()} {t("common.egp")}
-                </p>
-
-                <p className="text-sm text-muted-foreground">
-                  {t("tournamentDetail.perTeam")}
-                </p>
-
-                {/* progress */}
-                <div className="mt-5">
-                  <div className="flex justify-between text-sm">
-                    <span className="text-muted-foreground">
-                      {t("common.teamsJoined")}
-                    </span>
-                    <span className="font-medium">
-                      {safeJoined}/{safeMax}
-                    </span>
-                  </div>
-
-                  <Progress value={progress} className="mt-2 h-2" />
-
-                  <p className="mt-2 text-sm text-muted-foreground">
-                    {spotsLeft > 0
-                      ? `${spotsLeft} ${t("tournamentDetail.spotsRemaining")}`
-                      : t("tournaments.full")}
+              <CardContent className="space-y-5 p-6">
+                <div>
+                  <p className="text-sm text-muted-foreground">{labels.price}</p>
+                  <p className="text-3xl font-bold text-primary">
+                    {tournament.price} {t("common.egp")}
                   </p>
                 </div>
 
-                <Button
-                  className="w-full mt-5"
-                  size="lg"
-                  disabled={tournament.status !== "open"}
-                  onClick={handleJoin}
-                >
+                <div>
+                  <p className="text-sm text-muted-foreground">{labels.prize}</p>
+                  <p className="font-medium">
+                    {tournament.prize[language] || tournament.prize.en || tournament.prize.ar || "-"}
+                  </p>
+                </div>
+
+                <Button className="w-full" onClick={handleJoin}>
                   {t("tournamentDetail.joinCta")}
                 </Button>
-
-                <div className="mt-4 rounded-lg bg-muted p-3">
-                  <p className="text-sm text-muted-foreground">
-                    {t("tournamentDetail.footnote")}
-                  </p>
-                </div>
-
               </CardContent>
             </Card>
           </div>
@@ -299,30 +234,18 @@ export default function TournamentDetailsPage() {
   )
 }
 
-/* reusable */
-
-function PrizeItem({ label, value }: any) {
-  return (
-    <div className="border p-4 rounded-xl">
-      <p className="text-sm text-muted-foreground">{label}</p>
-      <p className="text-xl font-bold">{value} EGP</p>
-    </div>
-  )
-}
-
-function PointItem({ value, label }: any) {
-  return (
-    <div className="bg-accent p-4 rounded-lg">
-      <p className="text-2xl font-bold text-primary">{value}</p>
-      <p className="text-sm">{label}</p>
-    </div>
-  )
-}
-
-function InfoBox({ label, value }: any) {
+function InfoBox({
+  label,
+  value,
+  icon,
+}: {
+  label: string
+  value: string
+  icon: ReactNode
+}) {
   return (
     <div className="flex items-center gap-3 rounded-lg bg-muted p-3">
-      <Calendar className="h-5 w-5 text-primary" />
+      {icon}
       <div>
         <p className="text-sm text-muted-foreground">{label}</p>
         <p className="font-medium">{value}</p>

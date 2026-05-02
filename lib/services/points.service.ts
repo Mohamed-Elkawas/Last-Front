@@ -9,11 +9,24 @@ export type CreatePointsTransactionPayload = Omit<
 
 export type PointsSummaryResponse = {
   balance: number
+  points?: number
+  totalPoints?: number
+  level?: number
+  rank?: string
   transactions?: PointsTransaction[]
 }
 
 const USE_MOCK_UNCONNECTED_FEATURES =
   process.env.NEXT_PUBLIC_MOCK_UNCONNECTED_FEATURES === "true"
+
+const POINTS_404_FALLBACK: PointsSummaryResponse = {
+  balance: 0,
+  points: 0,
+  totalPoints: 0,
+  level: 1,
+  rank: "Beginner",
+  transactions: [],
+}
 
 export async function getMyPoints(): Promise<PointsSummaryResponse> {
   if (USE_MOCK_UNCONNECTED_FEATURES) {
@@ -25,7 +38,18 @@ export async function getMyPoints(): Promise<PointsSummaryResponse> {
     }
   }
 
-  return http<PointsSummaryResponse>("/api/points/me")
+  try {
+    return await http<PointsSummaryResponse>("/api/points/me")
+  } catch (error) {
+    if (
+      error instanceof Error &&
+      /(404|not found)/i.test(error.message.toString())
+    ) {
+      return POINTS_404_FALLBACK
+    }
+
+    throw error
+  }
 }
 
 export async function createPointsTransaction(

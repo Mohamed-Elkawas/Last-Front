@@ -6,6 +6,9 @@ import { usePointsStore } from "@/lib/points-store"
 import { getMyPoints } from "@/lib/services/points.service"
 import type { PointsTransaction } from "@/lib/types/points"
 
+// 👇 toggle حقيقي
+const ENABLE_POINTS = process.env.NEXT_PUBLIC_ENABLE_POINTS === "true"
+
 const USE_MOCK_UNCONNECTED_FEATURES =
   process.env.NEXT_PUBLIC_MOCK_UNCONNECTED_FEATURES === "true"
 
@@ -20,7 +23,8 @@ export function usePoints() {
   const [apiError, setApiError] = useState<string | null>(null)
 
   const refreshPoints = useCallback(async () => {
-    if (USE_MOCK_UNCONNECTED_FEATURES) {
+    // 👇 وقف API بالكامل
+    if (!ENABLE_POINTS || USE_MOCK_UNCONNECTED_FEATURES) {
       setApiLoading(false)
       return
     }
@@ -47,6 +51,19 @@ export function usePoints() {
     refreshPoints()
   }, [refreshPoints])
 
+  // 👇 لو feature مقفول → رجع safe data
+  if (!ENABLE_POINTS) {
+    return {
+      balance: 0,
+      transactions: [],
+      hasHydrated: true,
+      isLoading: false,
+      error: null,
+      refreshPoints,
+    }
+  }
+
+  // 👇 لو mock شغال
   if (USE_MOCK_UNCONNECTED_FEATURES) {
     return {
       balance: localBalance,
@@ -58,6 +75,7 @@ export function usePoints() {
     }
   }
 
+  // 👇 API الحقيقي
   return {
     balance: apiBalance,
     transactions: apiTransactions,

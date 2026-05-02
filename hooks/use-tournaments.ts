@@ -1,24 +1,24 @@
 "use client"
 
 import { useCallback, useEffect, useState } from "react"
-import type {
-  TournamentDetail,
-  TournamentSummary,
-} from "@/lib/types/tournament"
 import {
-  listTournamentSummaries,
   getTournamentById,
-} from "@/lib/services/tournaments.service"
+  getTournaments,
+  type TournamentRecord,
+} from "@/lib/services/tournaments.api"
 
-export function useTournamentSummaries() {
-  const [tournaments, setTournaments] = useState<TournamentSummary[]>([])
+export function useTournamentSummaries(params?: {
+  status?: string
+  limit?: number
+}) {
+  const [tournaments, setTournaments] = useState<TournamentRecord[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<Error | null>(null)
 
   const load = useCallback(async () => {
     try {
       setLoading(true)
-      const data = await listTournamentSummaries()
+      const data = await getTournaments(params)
       setTournaments(data)
       setError(null)
     } catch (e) {
@@ -26,10 +26,10 @@ export function useTournamentSummaries() {
     } finally {
       setLoading(false)
     }
-  }, [])
+  }, [params?.limit, params?.status])
 
   useEffect(() => {
-    load()
+    void load()
   }, [load])
 
   return {
@@ -41,12 +41,16 @@ export function useTournamentSummaries() {
 }
 
 export function useTournamentDetail(id: string | undefined) {
-  const [tournament, setTournament] = useState<TournamentDetail | null>(null)
+  const [tournament, setTournament] = useState<TournamentRecord | null>(null)
   const [loading, setLoading] = useState(Boolean(id))
   const [error, setError] = useState<Error | null>(null)
 
   const load = useCallback(async () => {
-    if (!id) return
+    if (!id) {
+      setTournament(null)
+      setLoading(false)
+      return
+    }
 
     try {
       setLoading(true)
@@ -55,13 +59,14 @@ export function useTournamentDetail(id: string | undefined) {
       setError(null)
     } catch (e) {
       setError(e instanceof Error ? e : new Error(String(e)))
+      setTournament(null)
     } finally {
       setLoading(false)
     }
   }, [id])
 
   useEffect(() => {
-    load()
+    void load()
   }, [load])
 
   return {

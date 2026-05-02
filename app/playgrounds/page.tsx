@@ -1,9 +1,11 @@
 "use client"
 
-import { Suspense, useMemo, useState } from "react"
+import { Suspense, useEffect, useMemo, useState } from "react"
 import Image from "next/image"
-import { useRouter } from "next/navigation"
+import Link from "next/link"
+import { useRouter, useSearchParams } from "next/navigation"
 import { Search, MapPin, Star, X, ChevronDown, Heart } from "lucide-react"
+
 import { AuthRequiredDialog } from "@/components/auth/auth-required-dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -19,19 +21,32 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select"
+
 import { format } from "date-fns"
 import { useTranslate } from "@/hooks/use-translate"
 import { getDateFnsLocale } from "@/lib/i18n/date-locale"
-import { usePlaygroundsCatalog } from "@/hooks/use-playgrounds"
 import { useFavoritePlaygrounds } from "@/hooks/use-favorite-playgrounds"
+import { getFields, searchFields } from "@/lib/services/fields.api"
 import { useRequireAuth } from "@/lib/auth/require-auth"
 import { EGYPT_GOVERNORATES } from "@/lib/constants/egypt-governorates"
-import type { EgyptGovernorateKey } from "@/lib/types/playground"
+import type { EgyptGovernorateKey, Playground } from "@/lib/types/playground"
 
 const pitchSizes = ["5v5", "7v7", "11v11"]
 
+type PlaygroundWithSource = Playground & {
+  __fromApi: true
+}
+
+function markApiPlaygrounds(playgrounds: Playground[]): PlaygroundWithSource[] {
+  return playgrounds.map((playground) => ({
+    ...playground,
+    __fromApi: true,
+  }))
+}
+
 function PlaygroundsPageContent() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { t, language } = useTranslate()
   const { isFavorite, toggleFavorite, hasHydrated: favoritesHydrated } =
     useFavoritePlaygrounds()
@@ -39,7 +54,7 @@ function PlaygroundsPageContent() {
   const dateLocale = useMemo(() => getDateFnsLocale(language), [language])
 
   const [showAuthDialog, setShowAuthDialog] = useState(false)
-  const [searchQuery, setSearchQuery] = useState("")
+  const [searchQuery, setSearchQuery] = useState(() => searchParams.get("q") ?? "")
   const [selectedGovernorate, setSelectedGovernorate] =
     useState<EgyptGovernorateKey>("all")
   const [selectedSizes, setSelectedSizes] = useState<string[]>([])
@@ -47,17 +62,48 @@ function PlaygroundsPageContent() {
   const [selectedTime, setSelectedTime] = useState("all")
   const [sortBy, setSortBy] = useState("relevance")
 
-  const playgroundQuery = useMemo(
-    () => ({
-      governorateKey:
-        selectedGovernorate === "all" ? undefined : selectedGovernorate,
-      pitchSizes: selectedSizes,
-    }),
-    [selectedGovernorate, selectedSizes],
-  )
+  const [allPlaygrounds, setAllPlaygrounds] = useState<PlaygroundWithSource[]>([])
+  const [catalogLoading, setCatalogLoading] = useState(true)
+  const [catalogError, setCatalogError] = useState<Error | null>(null)
 
-  const { playgrounds: allPlaygrounds, loading: catalogLoading } =
-    usePlaygroundsCatalog(playgroundQuery)
+  useEffect(() => {
+    const nextQuery = searchParams.get("q") ?? ""
+    setSearchQuery((current) => (current === nextQuery ? current : nextQuery))
+  }, [searchParams])
+
+  useEffect(() => {
+    let isMounted = true
+
+    async function fetchPlaygrounds() {
+      setCatalogLoading(true)
+      setCatalogError(null)
+
+      try {
+        const apiResults = searchQuery.trim()
+          ? await searchFields(searchQuery.trim())
+          : await getFields()
+
+        if (isMounted) {
+          setAllPlaygrounds(markApiPlaygrounds(apiResults))
+        }
+      } catch (error) {
+        if (!isMounted) return
+
+        setCatalogError(error instanceof Error ? error : new Error(String(error)))
+        setAllPlaygrounds([])
+      } finally {
+        if (isMounted) {
+          setCatalogLoading(false)
+        }
+      }
+    }
+
+    fetchPlaygrounds()
+
+    return () => {
+      isMounted = false
+    }
+  }, [searchQuery])
 
   const timeOptions = useMemo(
     () => [
@@ -99,15 +145,30 @@ function PlaygroundsPageContent() {
       )
     })
 
+    if (selectedGovernorate !== "all") {
+      const expected = selectedGovernorate.toLowerCase().replace(/-/g, " ")
+      results = results.filter((playground) => {
+        const cityKey = playground.cityKey?.toLowerCase().replace(/-/g, " ") ?? ""
+        const location = `${playground.location.en} ${playground.location.ar}`.toLowerCase()
+        return cityKey.includes(expected) || location.includes(expected)
+      })
+    }
+
+    if (selectedSizes.length > 0) {
+      results = results.filter((playground) =>
+        selectedSizes.some((size) => playground.pitchSizes.includes(size)),
+      )
+    }
+
     switch (sortBy) {
       case "price-low":
-        results = results.sort((a, b) => a.price.min - b.price.min)
+        results = [...results].sort((a, b) => a.price.min - b.price.min)
         break
       case "price-high":
-        results = results.sort((a, b) => b.price.max - a.price.max)
+        results = [...results].sort((a, b) => b.price.max - a.price.max)
         break
       case "rating":
-        results = results.sort((a, b) => b.rating - a.rating)
+        results = [...results].sort((a, b) => b.rating - a.rating)
         break
       default:
         break
@@ -143,6 +204,12 @@ function PlaygroundsPageContent() {
   }
 
   const handleBookNow = (playgroundId: string) => {
+    const playground = allPlaygrounds.find((p) => p.id === playgroundId)
+
+    if (!playground?.__fromApi) {
+      return
+    }
+
     if (!canProceed("playground_book", { playgroundId })) {
       setShowAuthDialog(true)
       return
@@ -174,6 +241,12 @@ function PlaygroundsPageContent() {
           <p className="mt-2 text-muted-foreground">
             {t("playgrounds.subtitle")}
           </p>
+
+          {catalogError && (
+            <p className="mt-4 text-sm text-destructive">
+              {catalogError.message || t("common.unexpectedError")}
+            </p>
+          )}
         </div>
 
         <div className="mb-8 space-y-5">
@@ -232,6 +305,7 @@ function PlaygroundsPageContent() {
                   <ChevronDown className="h-4 w-4" />
                 </Button>
               </PopoverTrigger>
+
               <PopoverContent className="w-auto p-0" align="start">
                 <CalendarComponent
                   mode="single"
@@ -247,6 +321,7 @@ function PlaygroundsPageContent() {
               <SelectTrigger className="h-9 w-[200px] rounded-full sm:w-[220px]">
                 <SelectValue placeholder={t("playgroundsUi.selectTime")} />
               </SelectTrigger>
+
               <SelectContent>
                 {timeOptions.map((option) => (
                   <SelectItem key={option.value} value={option.value}>
@@ -300,6 +375,7 @@ function PlaygroundsPageContent() {
               </span>
               <SelectValue />
             </SelectTrigger>
+
             <SelectContent align="end">
               {sortOptions.map((option) => (
                 <SelectItem key={option.value} value={option.value}>
@@ -357,7 +433,9 @@ function PlaygroundsPageContent() {
 
                 <CardContent className="p-4">
                   <h3 className="font-semibold text-foreground">
-                    {playground.name[language]}
+                    <Link href={`/playgrounds/${playground.id}`} className="hover:text-primary">
+                      {playground.name[language]}
+                    </Link>
                   </h3>
 
                   <div className="mt-1 flex items-center gap-1 text-muted-foreground">
