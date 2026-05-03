@@ -29,7 +29,7 @@ export default function JoinTournamentPage() {
         : undefined
 
   const { t, isArabic } = useTranslate()
-  const { user, hasHydrated, session } = useAuth()
+  const { user, hasHydrated, accountType } = useAuth()
   const { isAuthenticated, canProceed } = useRequireAuth()
   const {
     tournament,
@@ -42,8 +42,7 @@ export default function JoinTournamentPage() {
   const [submitting, setSubmitting] = useState(false)
   const [submitError, setSubmitError] = useState<string | null>(null)
 
-  const isPlayerOrAdmin =
-    session?.roles.includes("player") || session?.roles.includes("admin") || false
+  const isPlayer = accountType === "player"
 
   useEffect(() => {
     if (!isAuthenticated) {
@@ -74,7 +73,7 @@ export default function JoinTournamentPage() {
       return
     }
 
-    if (!isPlayerOrAdmin) {
+    if (!isPlayer) {
       setSubmitError(labels.noPermission)
       return
     }

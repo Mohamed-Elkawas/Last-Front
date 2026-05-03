@@ -122,7 +122,7 @@ export default function OwnerTournamentsPage() {
   const rows = useMemo(() => tournaments, [tournaments])
 
   const handleDeleteTournament = async (tournamentId: string) => {
-   if (!isOwner) {
+    if (!isOwner) {
       setErrorMessage(labels.noPermission)
       setDeletingTournament(null)
       return
@@ -185,13 +185,13 @@ export default function OwnerTournamentsPage() {
         )}
       </div>
 
-{!isOwner ? (
-  <Alert>
-    <AlertCircle className="h-4 w-4" />
-    <AlertTitle>{labels.title}</AlertTitle>
-    <AlertDescription>{labels.noPermission}</AlertDescription>
-  </Alert>
-) : null}
+      {!isOwner ? (
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>{labels.title}</AlertTitle>
+          <AlertDescription>{labels.noPermission}</AlertDescription>
+        </Alert>
+      ) : null}
 
       {errorMessage ? (
         <Alert variant="destructive">

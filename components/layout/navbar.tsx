@@ -54,7 +54,6 @@ export function Navbar() {
   const { balance: pointsBalance, hasHydrated: pointsHydrated } = usePoints()
   const { t, hasHydrated: languageHasHydrated } = useTranslate()
 
-  const isOwner = session?.roles.includes("owner") ?? false
   const isOwnerSession = accountType === "owner"
 
   const ready = authHasHydrated && languageHasHydrated && pointsHydrated
@@ -89,7 +88,7 @@ export function Navbar() {
       <header className="sticky top-0 z-50 w-full border-b border-border bg-card">
         <div className="mx-auto flex min-h-16 w-full max-w-7xl items-center justify-between gap-2 overflow-hidden px-2 py-2 sm:px-6">
           <div className="flex min-w-0 flex-1 items-center gap-2 lg:gap-6">
-            <Link href="/" className="flex min-w-0 items-center">
+            <Link href={isOwnerSession ? AUTH_ROUTES.ownerHome : "/"} className="flex min-w-0 items-center">
               <div className="min-w-0 [&_span]:max-w-[110px] [&_span]:truncate sm:[&_span]:max-w-none">
                 <AppLogo />
               </div>
@@ -167,47 +166,60 @@ export function Navbar() {
 
                     <DropdownMenuSeparator />
 
-                    <DropdownMenuItem asChild>
-                      <Link href="/profile" className="flex items-center gap-2">
-                        <User className="h-4 w-4" />
-                        {t("common.profile")}
-                      </Link>
-                    </DropdownMenuItem>
+                    {isOwnerSession ? (
+                      <>
+                        <DropdownMenuItem asChild>
+                          <Link href="/owner/profile" className="flex items-center gap-2">
+                            <User className="h-4 w-4" />
+                            {t("common.profile")}
+                          </Link>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem asChild>
+                          <Link href={AUTH_ROUTES.ownerHome} className="flex items-center gap-2">
+                            <ClipboardList className="h-4 w-4" />
+                            {t("ownerBookings.navLink")}
+                          </Link>
+                        </DropdownMenuItem>
+                      </>
+                    ) : (
+                      <>
+                        <DropdownMenuItem asChild>
+                          <Link href="/profile" className="flex items-center gap-2">
+                            <User className="h-4 w-4" />
+                            {t("common.profile")}
+                          </Link>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem asChild>
+                          <Link href="/favorites" className="flex items-center gap-2">
+                            <Star className="h-4 w-4" />
+                            {t("common.favorites")}
+                          </Link>
+                        </DropdownMenuItem>
+
+                        <DropdownMenuItem asChild>
+                          <Link
+                            href="/my-tournaments"
+                            className="flex items-center gap-2"
+                          >
+                            <Trophy className="h-4 w-4" />
+                            {myTournamentsLabel}
+                          </Link>
+                        </DropdownMenuItem>
+                      </>
+                    )}
 
                     <LanguageSwitcher />
 
-                    <DropdownMenuItem asChild>
-                      <Link
-                        href="/notifications/settings"
-                        className="flex items-center gap-2"
-                      >
-                        <Settings className="h-4 w-4" />
-                        {t("notifications.settingsTitle")}
-                      </Link>
-                    </DropdownMenuItem>
-
-                    <DropdownMenuItem asChild>
-                      <Link href="/favorites" className="flex items-center gap-2">
-                        <Star className="h-4 w-4" />
-                        {t("common.favorites")}
-                      </Link>
-                    </DropdownMenuItem>
-
-                    <DropdownMenuItem asChild>
-                      <Link
-                        href="/my-tournaments"
-                        className="flex items-center gap-2"
-                      >
-                        <Trophy className="h-4 w-4" />
-                        {myTournamentsLabel}
-                      </Link>
-                    </DropdownMenuItem>
-
-                    {isOwner ? (
+                    {!isOwnerSession ? (
                       <DropdownMenuItem asChild>
-                        <Link href="/owner" className="flex items-center gap-2">
-                          <ClipboardList className="h-4 w-4" />
-                          {t("ownerBookings.navLink")}
+                        <Link
+                          href="/notifications/settings"
+                          className="flex items-center gap-2"
+                        >
+                          <Settings className="h-4 w-4" />
+                          {t("notifications.settingsTitle")}
                         </Link>
                       </DropdownMenuItem>
                     ) : null}

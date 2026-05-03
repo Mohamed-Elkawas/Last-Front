@@ -46,7 +46,7 @@ export default function CreateTournamentPage() {
   const { language, hasHydrated } = useAppTranslations()
   const { session, hasHydrated: authHydrated, isAuthenticated, accountType } = useAuth()
   const isArabic = language === "ar"
-const isOwner = accountType === "owner"
+  const isOwner = accountType === "owner"
 
   const [fields, setFields] = useState<FieldRecord[]>([])
   const [loadingFields, setLoadingFields] = useState(true)
@@ -72,7 +72,7 @@ const isOwner = accountType === "owner"
     back: isArabic ? "العودة للبطولات" : "Back to tournaments",
     noPermission: isArabic
       ? "إنشاء البطولات متاح فقط لصاحب الملعب."
-      : "Tournament creation is only available for accounts with the admin role.",
+      : "Tournament creation is only available for field owner accounts.",
     noFields: isArabic ? "لا توجد ملاعب متاحة" : "No fields available",
     noFieldsBody: isArabic
       ? "أنشئ ملعباً أولاً قبل إنشاء بطولة."
