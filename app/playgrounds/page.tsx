@@ -4,7 +4,7 @@ import { Suspense, useEffect, useMemo, useState } from "react"
 import Image from "next/image"
 import Link from "next/link"
 import { useRouter, useSearchParams } from "next/navigation"
-import { Search, MapPin, Star, X, ChevronDown, Heart } from "lucide-react"
+import { Search, MapPin, Star, X, ChevronDown, Heart, Loader2 } from "lucide-react"
 
 import { AuthRequiredDialog } from "@/components/auth/auth-required-dialog"
 import { Button } from "@/components/ui/button"
@@ -55,6 +55,8 @@ function PlaygroundsPageContent() {
 
   const [showAuthDialog, setShowAuthDialog] = useState(false)
   const [searchQuery, setSearchQuery] = useState(() => searchParams.get("q") ?? "")
+  const [debouncedSearchQuery, setDebouncedSearchQuery] = useState(() => searchParams.get("q") ?? "")
+
   const [selectedGovernorate, setSelectedGovernorate] =
     useState<EgyptGovernorateKey>("all")
   const [selectedSizes, setSelectedSizes] = useState<string[]>([])
@@ -64,23 +66,40 @@ function PlaygroundsPageContent() {
 
   const [allPlaygrounds, setAllPlaygrounds] = useState<PlaygroundWithSource[]>([])
   const [catalogLoading, setCatalogLoading] = useState(true)
+  const [isSearching, setIsSearching] = useState(false)
   const [catalogError, setCatalogError] = useState<Error | null>(null)
 
   useEffect(() => {
     const nextQuery = searchParams.get("q") ?? ""
     setSearchQuery((current) => (current === nextQuery ? current : nextQuery))
+    setDebouncedSearchQuery((current) => (current === nextQuery ? current : nextQuery))
   }, [searchParams])
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      setDebouncedSearchQuery(searchQuery.trim())
+    }, 350)
+
+    return () => window.clearTimeout(timer)
+  }, [searchQuery])
 
   useEffect(() => {
     let isMounted = true
 
     async function fetchPlaygrounds() {
-      setCatalogLoading(true)
+      const isInitialLoad = allPlaygrounds.length === 0
+
+      if (isInitialLoad) {
+        setCatalogLoading(true)
+      } else {
+        setIsSearching(true)
+      }
+
       setCatalogError(null)
 
       try {
-        const apiResults = searchQuery.trim()
-          ? await searchFields(searchQuery.trim())
+        const apiResults = debouncedSearchQuery
+          ? await searchFields(debouncedSearchQuery)
           : await getFields()
 
         if (isMounted) {
@@ -90,10 +109,14 @@ function PlaygroundsPageContent() {
         if (!isMounted) return
 
         setCatalogError(error instanceof Error ? error : new Error(String(error)))
-        setAllPlaygrounds([])
+
+        if (isInitialLoad) {
+          setAllPlaygrounds([])
+        }
       } finally {
         if (isMounted) {
           setCatalogLoading(false)
+          setIsSearching(false)
         }
       }
     }
@@ -103,7 +126,7 @@ function PlaygroundsPageContent() {
     return () => {
       isMounted = false
     }
-  }, [searchQuery])
+  }, [debouncedSearchQuery])
 
   const timeOptions = useMemo(
     () => [
@@ -175,7 +198,7 @@ function PlaygroundsPageContent() {
     }
 
     return results
-  }, [allPlaygrounds, searchQuery, sortBy])
+  }, [allPlaygrounds, searchQuery, selectedGovernorate, selectedSizes, sortBy])
 
   const toggleSize = (size: string) => {
     setSelectedSizes((prev) =>
@@ -185,6 +208,7 @@ function PlaygroundsPageContent() {
 
   const clearFilters = () => {
     setSearchQuery("")
+    setDebouncedSearchQuery("")
     setSelectedGovernorate("all")
     setSelectedSizes([])
     setSelectedDate(undefined)
@@ -201,14 +225,13 @@ function PlaygroundsPageContent() {
 
   const handleSearchSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault()
+    setDebouncedSearchQuery(searchQuery.trim())
   }
 
   const handleBookNow = (playgroundId: string) => {
     const playground = allPlaygrounds.find((p) => p.id === playgroundId)
 
-    if (!playground?.__fromApi) {
-      return
-    }
+    if (!playground?.__fromApi) return
 
     if (!canProceed("playground_book", { playgroundId })) {
       setShowAuthDialog(true)
@@ -256,16 +279,34 @@ function PlaygroundsPageContent() {
               aria-label="Search"
               className="absolute start-4 top-1/2 z-10 -translate-y-1/2 text-muted-foreground transition-colors hover:text-primary"
             >
-              <Search className="h-5 w-5" />
+              {isSearching ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <Search className="h-5 w-5" />
+              )}
             </button>
 
             <Input
               type="search"
               placeholder={t("playgrounds.searchPlaceholder")}
-              className="h-12 rounded-full ps-12 pe-4 text-base"
+              className="h-12 rounded-full ps-12 pe-10 text-base"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
             />
+
+            {searchQuery ? (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => {
+                  setSearchQuery("")
+                  setDebouncedSearchQuery("")
+                }}
+                className="absolute end-4 top-1/2 z-10 -translate-y-1/2 text-muted-foreground transition-colors hover:text-foreground"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            ) : null}
           </form>
 
           <div className="flex flex-wrap items-center gap-4">
@@ -292,15 +333,9 @@ function PlaygroundsPageContent() {
 
             <Popover>
               <PopoverTrigger asChild>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="h-9 gap-2 rounded-full"
-                >
+                <Button variant="outline" size="sm" className="h-9 gap-2 rounded-full">
                   {selectedDate
-                    ? format(selectedDate, "MMM d, yyyy", {
-                        locale: dateLocale,
-                      })
+                    ? format(selectedDate, "MMM d, yyyy", { locale: dateLocale })
                     : t("playgrounds.selectDate")}
                   <ChevronDown className="h-4 w-4" />
                 </Button>
@@ -340,6 +375,7 @@ function PlaygroundsPageContent() {
             {pitchSizes.map((size) => (
               <Button
                 key={size}
+                type="button"
                 variant={selectedSizes.includes(size) ? "default" : "outline"}
                 size="sm"
                 onClick={() => toggleSize(size)}
@@ -351,6 +387,7 @@ function PlaygroundsPageContent() {
 
             {hasActiveFilters && (
               <Button
+                type="button"
                 variant="ghost"
                 size="sm"
                 onClick={clearFilters}
@@ -440,9 +477,7 @@ function PlaygroundsPageContent() {
 
                   <div className="mt-1 flex items-center gap-1 text-muted-foreground">
                     <MapPin className="h-4 w-4 shrink-0" />
-                    <span className="text-sm">
-                      {playground.location[language]}
-                    </span>
+                    <span className="text-sm">{playground.location[language]}</span>
                   </div>
 
                   <div className="mt-3 flex flex-wrap gap-1.5">

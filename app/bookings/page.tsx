@@ -1,7 +1,7 @@
 "use client"
 
 import { QRCodeCanvas } from "qrcode.react"
-import { useState } from "react"
+import { useEffect, useState } from "react"
 import Link from "next/link"
 import Image from "next/image"
 import { useRouter } from "next/navigation"
@@ -26,11 +26,12 @@ import type { Booking } from "@/lib/types/booking"
 
 interface BookingCardProps {
   booking: Booking
+  now: number
   onCancel: (id: string) => void
   canCancel: (booking: Booking) => boolean
 }
 
-function BookingCard({ booking, onCancel, canCancel }: BookingCardProps) {
+function BookingCard({ booking, now, onCancel, canCancel }: BookingCardProps) {
   const router = useRouter()
   const [showCancelDialog, setShowCancelDialog] = useState(false)
   const { t, isArabic, language } = useAppTranslations()
@@ -56,9 +57,13 @@ function BookingCard({ booking, onCancel, canCancel }: BookingCardProps) {
       : booking.tournament?.total
 
   const remainingSeconds = Math.max(
-    Math.floor((booking.expiresAt - Date.now()) / 1000),
+    Math.floor((booking.expiresAt - now) / 1000),
     0,
   )
+
+  const formattedRemaining = `${Math.floor(remainingSeconds / 60)}:${String(
+    remainingSeconds % 60,
+  ).padStart(2, "0")}`
 
   const statusColors: Record<string, string> = {
     pending_payment: "bg-amber-100 text-amber-800",
@@ -95,30 +100,31 @@ function BookingCard({ booking, onCancel, canCancel }: BookingCardProps) {
     booking.status === "confirmed" &&
     !booking.playedAt
 
-const canContinuePayment =
-  booking.status === "pending_payment" &&
-  ((booking.kind === "playground" && Boolean(booking.playground?.id)) ||
-    (booking.kind === "tournament" && Boolean(booking.tournament?.id)))
+  const canContinuePayment =
+    booking.status === "pending_payment" &&
+    remainingSeconds > 0 &&
+    ((booking.kind === "playground" && Boolean(booking.playground?.id)) ||
+      (booking.kind === "tournament" && Boolean(booking.tournament?.id)))
 
- const handleContinuePayment = () => {
-  if (booking.status !== "pending_payment") return
+  const handleContinuePayment = () => {
+    if (booking.status !== "pending_payment") return
 
-  if (booking.kind === "playground" && booking.playground?.id) {
-    router.push(
-      `/playgrounds/${booking.playground.id}/book/payment?bookingId=${booking.id}`,
-    )
-    return
+    if (booking.kind === "playground" && booking.playground?.id) {
+      router.push(
+        `/playgrounds/${booking.playground.id}/book/payment?bookingId=${booking.id}`,
+      )
+      return
+    }
+
+    if (booking.kind === "tournament" && booking.tournament?.id) {
+      const method =
+        booking.paymentMethod === "instapay" ? "instapay" : "vodafone_cash"
+
+      router.push(
+        `/tournaments/${booking.tournament.id}/join/payment?registrationId=${booking.id}&method=${method}`,
+      )
+    }
   }
-
-  if (booking.kind === "tournament" && booking.tournament?.id) {
-    const method =
-      booking.paymentMethod === "instapay" ? "instapay" : "vodafone_cash"
-
-    router.push(
-      `/tournaments/${booking.tournament.id}/join/payment?registrationId=${booking.id}&method=${method}`,
-    )
-  }
-}
 
   return (
     <Card className="overflow-hidden transition-shadow hover:shadow-md">
@@ -180,9 +186,7 @@ const canContinuePayment =
                     <AlertCircle className="h-4 w-4" />
                     <span>
                       {t("bookings.paymentWindowLeft", {
-                        time: `${Math.floor(remainingSeconds / 60)}:${String(
-                          remainingSeconds % 60,
-                        ).padStart(2, "0")}`,
+                        time: formattedRemaining,
                       })}
                     </span>
                   </div>
@@ -346,6 +350,15 @@ export default function BookingsPage() {
   } = useBookings()
 
   const { t, hasHydrated: i18nReady } = useAppTranslations()
+  const [now, setNow] = useState(() => Date.now())
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setNow(Date.now())
+    }, 1000)
+
+    return () => window.clearInterval(interval)
+  }, [])
 
   if (!hasHydrated || !i18nReady) return null
 
@@ -383,6 +396,7 @@ export default function BookingsPage() {
                   <BookingCard
                     key={booking.id}
                     booking={booking}
+                    now={now}
                     onCancel={cancelBooking}
                     canCancel={isCancelableBooking}
                   />
@@ -418,6 +432,7 @@ export default function BookingsPage() {
                   <BookingCard
                     key={booking.id}
                     booking={booking}
+                    now={now}
                     onCancel={cancelBooking}
                     canCancel={() => false}
                   />
@@ -458,6 +473,7 @@ export default function BookingsPage() {
                     <BookingCard
                       key={booking.id}
                       booking={booking}
+                      now={now}
                       onCancel={cancelBooking}
                       canCancel={() => false}
                     />

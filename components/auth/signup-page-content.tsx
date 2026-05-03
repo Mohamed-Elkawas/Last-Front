@@ -32,12 +32,14 @@ export function SignUpPageContent() {
     [t],
   )
 
+  const PENDING_VERIFICATION_KEY = "hagzaya-auth-pending-verification"
+
   const [step, setStep] = useState(1)
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState("")
   const [accountType, setAccountType] = useState<"player" | "owner">("player")
-  const PENDING_VERIFICATION_KEY = "hagzaya-auth-pending-verification"
+
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -52,25 +54,43 @@ export function SignUpPageContent() {
     skillLevel: 3,
   })
 
+  const updateFormData = (patch: Partial<typeof formData>) => {
+    setError("")
+    setFormData((current) => ({ ...current, ...patch }))
+  }
+
+  const getErrorMessage = (err: unknown) => {
+    if (err instanceof TypeError && err.message.toLowerCase().includes("fetch")) {
+      return "تعذر الاتصال بالخادم. تحقق من اتصال الإنترنت أو رابط API أو إعدادات CORS."
+    }
+
+    if (err instanceof Error && err.message.trim()) {
+      return err.message
+    }
+
+    return "حدث خطأ أثناء إنشاء الحساب. حاول مرة أخرى."
+  }
+
   const validateStepOne = () => {
     if (!formData.firstName.trim()) return "الاسم الأول مطلوب"
     if (!formData.lastName.trim()) return "اسم العائلة مطلوب"
     if (!formData.username.trim()) return "اسم المستخدم مطلوب"
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email.trim())) return "البريد الإلكتروني غير صحيح"
     if (!/^01[0-9]{9}$/.test(formData.phone.trim())) return "رقم الهاتف يجب أن يكون 11 رقم ويبدأ بـ 01"
-
     if (!formData.age.trim()) return "العمر مطلوب"
     if (Number(formData.age) < 10) return "العمر غير صحيح"
-
     if (!formData.gender.trim()) return "النوع مطلوب"
     if (!formData.address.trim()) return "العنوان مطلوب"
-
     if (!formData.password || formData.password.length < 6) return "كلمة المرور يجب ألا تقل عن 6 أحرف"
+
     return ""
   }
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (isLoading) return
+
     setError("")
 
     if (accountType === "owner") {
@@ -80,6 +100,7 @@ export function SignUpPageContent() {
 
     if (step === 1) {
       const validationError = validateStepOne()
+
       if (validationError) {
         setError(validationError)
         return
@@ -93,36 +114,27 @@ export function SignUpPageContent() {
       setIsLoading(true)
       setError("")
 
-      console.log("[Signup] Calling registerPlayer with payload:", {
-        firstName: formData.firstName.trim(),
-        lastName: formData.lastName.trim(),
-        username: formData.username.trim(),
-        email: formData.email.trim().toLowerCase(),
-        phone: formData.phone.trim(),
-        age: Number(formData.age),
-        gender: formData.gender,
-        address: formData.address.trim(),
-        joinedAt: new Date().toISOString(),
-        position: formData.position,
-        skillLevel: Number(formData.skillLevel),
-      })
-
-      const result = await registerPlayer({
+      const payload = {
         firstName: formData.firstName.trim(),
         lastName: formData.lastName.trim(),
         username: formData.username.trim(),
         email: formData.email.trim().toLowerCase(),
         phone: formData.phone.trim(),
         password: formData.password,
-
         age: Number(formData.age),
         gender: formData.gender,
         address: formData.address.trim(),
         joinedAt: new Date().toISOString(),
-
         position: formData.position,
         skillLevel: Number(formData.skillLevel),
+      }
+
+      console.log("[Signup] Calling registerPlayer with payload:", {
+        ...payload,
+        password: "********",
       })
+
+      const result = await registerPlayer(payload)
 
       console.log("[Signup] registerPlayer succeeded:", result)
 
@@ -131,6 +143,7 @@ export function SignUpPageContent() {
         accountType: "player" as const,
         purpose: "register" as const,
       }
+
       sessionStorage.setItem(PENDING_VERIFICATION_KEY, JSON.stringify(pendingVerification))
 
       toast({
@@ -142,17 +155,7 @@ export function SignUpPageContent() {
       router.push(`${AUTH_ROUTES.verifyOtp}?purpose=register&type=player`)
     } catch (err) {
       console.error("[Signup] Error during registration:", err)
-
-      let errorMessage = "حدث خطأ أثناء إنشاء الحساب"
-
-      if (err instanceof TypeError && err.message.includes("fetch")) {
-        errorMessage = "تعذر الاتصال بالخادم. تحقق من CORS أو رابط API."
-        console.error("[Signup] Fetch error - likely network or CORS issue:", err.message)
-      } else if (err instanceof Error) {
-        errorMessage = err.message
-      }
-
-      setError(errorMessage)
+      setError(getErrorMessage(err))
     } finally {
       setIsLoading(false)
     }
@@ -181,7 +184,9 @@ export function SignUpPageContent() {
         <Card>
           <CardHeader className="text-center">
             <CardTitle className="text-2xl">{t("auth.createAccountTitle")}</CardTitle>
-            <CardDescription>{step === 1 ? t("auth.createAccountStep1") : t("auth.createAccountStep2")}</CardDescription>
+            <CardDescription>
+              {step === 1 ? t("auth.createAccountStep1") : t("auth.createAccountStep2")}
+            </CardDescription>
           </CardHeader>
 
           <CardContent>
@@ -205,6 +210,8 @@ export function SignUpPageContent() {
                       value={accountType}
                       onValueChange={(value) => {
                         const nextType = value as "player" | "owner"
+
+                        setError("")
                         setAccountType(nextType)
 
                         if (nextType === "owner") {
@@ -246,7 +253,8 @@ export function SignUpPageContent() {
                           placeholder={t("authForms.enterFirstName")}
                           className="ps-10"
                           value={formData.firstName}
-                          onChange={(e) => setFormData({ ...formData, firstName: e.target.value })}
+                          onChange={(e) => updateFormData({ firstName: e.target.value })}
+                          disabled={isLoading}
                           required
                         />
                       </div>
@@ -262,7 +270,8 @@ export function SignUpPageContent() {
                           placeholder={t("authForms.enterLastName")}
                           className="ps-10"
                           value={formData.lastName}
-                          onChange={(e) => setFormData({ ...formData, lastName: e.target.value })}
+                          onChange={(e) => updateFormData({ lastName: e.target.value })}
+                          disabled={isLoading}
                           required
                         />
                       </div>
@@ -279,7 +288,8 @@ export function SignUpPageContent() {
                         placeholder={t("authForms.enterUsername")}
                         className="ps-8"
                         value={formData.username}
-                        onChange={(e) => setFormData({ ...formData, username: e.target.value })}
+                        onChange={(e) => updateFormData({ username: e.target.value })}
+                        disabled={isLoading}
                         required
                       />
                     </div>
@@ -296,7 +306,8 @@ export function SignUpPageContent() {
                         placeholder={t("authForms.emailPlaceholder")}
                         className="ps-10"
                         value={formData.email}
-                        onChange={(e) => setFormData({ ...formData, email: e.target.value })}
+                        onChange={(e) => updateFormData({ email: e.target.value })}
+                        disabled={isLoading}
                         required
                       />
                     </div>
@@ -312,7 +323,8 @@ export function SignUpPageContent() {
                         placeholder="01XXXXXXXXX"
                         className="ps-10"
                         value={formData.phone}
-                        onChange={(e) => setFormData({ ...formData, phone: e.target.value })}
+                        onChange={(e) => updateFormData({ phone: e.target.value })}
+                        disabled={isLoading}
                         required
                       />
                     </div>
@@ -330,7 +342,8 @@ export function SignUpPageContent() {
                           placeholder="##"
                           className="ps-10"
                           value={formData.age}
-                          onChange={(e) => setFormData({ ...formData, age: e.target.value })}
+                          onChange={(e) => updateFormData({ age: e.target.value })}
+                          disabled={isLoading}
                           required
                         />
                       </div>
@@ -341,11 +354,14 @@ export function SignUpPageContent() {
                       <select
                         id="gender"
                         value={formData.gender}
-                        onChange={(e) => setFormData({ ...formData, gender: e.target.value })}
+                        onChange={(e) => updateFormData({ gender: e.target.value })}
+                        disabled={isLoading}
                         required
-                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background"
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        <option value="" disabled>{t("auth.selectGender")}</option>
+                        <option value="" disabled>
+                          {t("auth.selectGender")}
+                        </option>
                         <option value="male">{t("auth.male")}</option>
                         <option value="female">{t("auth.female")}</option>
                       </select>
@@ -362,7 +378,8 @@ export function SignUpPageContent() {
                         placeholder={t("authForms.enterAddress")}
                         className="ps-10"
                         value={formData.address}
-                        onChange={(e) => setFormData({ ...formData, address: e.target.value })}
+                        onChange={(e) => updateFormData({ address: e.target.value })}
+                        disabled={isLoading}
                         required
                       />
                     </div>
@@ -378,13 +395,15 @@ export function SignUpPageContent() {
                         placeholder={t("authForms.createStrongPassword")}
                         className="ps-10 pe-10"
                         value={formData.password}
-                        onChange={(e) => setFormData({ ...formData, password: e.target.value })}
+                        onChange={(e) => updateFormData({ password: e.target.value })}
+                        disabled={isLoading}
                         required
                       />
                       <button
                         type="button"
-                        className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground disabled:opacity-50"
+                        onClick={() => setShowPassword((value) => !value)}
+                        disabled={isLoading}
                       >
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
@@ -402,7 +421,7 @@ export function SignUpPageContent() {
                     <Label>{t("authForms.positionLabel")}</Label>
                     <RadioGroup
                       value={formData.position}
-                      onValueChange={(value) => setFormData({ ...formData, position: value })}
+                      onValueChange={(value) => updateFormData({ position: value })}
                       className="grid grid-cols-2 gap-2"
                     >
                       {positions.map((pos) => (
@@ -426,24 +445,38 @@ export function SignUpPageContent() {
                         <button
                           key={level}
                           type="button"
-                          onClick={() => setFormData({ ...formData, skillLevel: level })}
-                          className={`flex h-12 w-12 items-center justify-center rounded-lg border-2 text-lg font-semibold transition-colors ${formData.skillLevel >= level
-                            ? "border-primary bg-primary text-primary-foreground"
-                            : "border-muted bg-card hover:bg-accent"
-                            }`}
+                          onClick={() => updateFormData({ skillLevel: level })}
+                          disabled={isLoading}
+                          className={`flex h-12 w-12 items-center justify-center rounded-lg border-2 text-lg font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
+                            formData.skillLevel >= level
+                              ? "border-primary bg-primary text-primary-foreground"
+                              : "border-muted bg-card hover:bg-accent"
+                          }`}
                         >
                           {level}
                         </button>
                       ))}
                     </div>
-                    <p className="text-center text-sm text-muted-foreground">{skillLabel(formData.skillLevel)}</p>
+                    <p className="text-center text-sm text-muted-foreground">
+                      {skillLabel(formData.skillLevel)}
+                    </p>
                   </div>
 
                   <div className="flex gap-3">
-                    <Button type="button" variant="outline" className="flex-1 gap-2" onClick={() => setStep(1)}>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="flex-1 gap-2"
+                      onClick={() => {
+                        setError("")
+                        setStep(1)
+                      }}
+                      disabled={isLoading}
+                    >
                       <ArrowLeft className="h-4 w-4 icon-arrow-back" />
                       {t("authForms.backArrow")}
                     </Button>
+
                     <Button type="submit" className="flex-1" disabled={isLoading}>
                       {isLoading ? t("common.creating") : t("auth.createAccount")}
                     </Button>

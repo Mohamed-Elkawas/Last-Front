@@ -124,84 +124,135 @@ async function mockHandler<T>(url: string, options: RequestInit = {}): Promise<T
     } as T
   }
 
-  // ================= FIELDS =================
-  if (url.includes("/api/fields")) {
-    // All fields endpoints return empty arrays in mock mode.
-    // Real API integration should handle actual data.
-    if (url.includes("/api/fields/popular") || url.includes("/api/fields/search") || url.includes("/api/fields/pending")) {
-      return {
-        isSuccess: true,
-        message: null,
-        data: [],
-        errors: null,
-      } as T
+ // ================= FIELDS =================
+const mockFields: any[] =
+  typeof window !== "undefined"
+    ? JSON.parse(localStorage.getItem("mock_fields") || "[]")
+    : []
+
+if (url.includes("/api/fields")) {
+  const body = typeof options.body === "string" ? JSON.parse(options.body) : {}
+
+  if (options.method === "POST" && url === "/api/fields") {
+    const newField = {
+      id: Date.now(),
+      ownerId: 1,
+      name: body.name,
+      city: body.city,
+      village: body.village,
+      address: body.address,
+      governorate: body.governorate,
+      type: body.type,
+      photos: body.photos,
+      priceAm: body.priceAm,
+      pricePm: body.pricePm,
+      amenities: body.amenities ?? [],
+      status: "approved",
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
     }
 
-    // GET /api/fields/{id}
-    if (/\/api\/fields\/[^\/]+$/.test(url)) {
-      return {
-        isSuccess: true,
-        message: null,
-        data: null,
-        errors: null,
-      } as T
+    const nextFields = [...mockFields, newField]
+
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mock_fields", JSON.stringify(nextFields))
     }
 
-    // GET /api/fields/owner/{ownerId}
-    if (url.includes("/api/fields/owner/")) {
-      return {
-        isSuccess: true,
-        message: null,
-        data: [],
-        errors: null,
-      } as T
-    }
-
-    // GET /api/fields (default list) and POST/PUT/DELETE endpoints
     return {
       isSuccess: true,
-      message: null,
-      data: [],
+      message: "Mock field created",
+      data: newField,
       errors: null,
     } as T
   }
 
-  // ================= PLAYGROUNDS =================
-  if (url.includes("/playgrounds") || url.includes("/api/playgrounds")) {
+  if (url.includes("/api/fields/popular")) {
     return {
       isSuccess: true,
       message: null,
-      data: [
-        {
-          id: "pg-1",
-          name: { en: "El Geish Stadium", ar: "ملعب الجيش" },
-          address: { en: "Cairo, Egypt", ar: "القاهرة، مصر" },
-          pricePerHour: 250,
-          rating: 4.7,
-          imageUrl: "/placeholder.jpg",
-          slots: [
-            { startTime: "18:00", endTime: "19:00", slotKey: "18-19" },
-            { startTime: "19:00", endTime: "20:00", slotKey: "19-20" },
-            { startTime: "20:00", endTime: "21:00", slotKey: "20-21" },
-          ],
-        },
-        {
-          id: "pg-2",
-          name: { en: "Smart Arena", ar: "سمارت أرينا" },
-          address: { en: "Giza, Egypt", ar: "الجيزة، مصر" },
-          pricePerHour: 300,
-          rating: 4.9,
-          imageUrl: "/placeholder.jpg",
-          slots: [
-            { startTime: "17:00", endTime: "18:00", slotKey: "17-18" },
-            { startTime: "21:00", endTime: "22:00", slotKey: "21-22" },
-          ],
-        },
+      data: mockFields.slice(0, 3),
+      errors: null,
+    } as T
+  }
+
+  if (url.includes("/api/fields/search")) {
+    return {
+      isSuccess: true,
+      message: null,
+      data: mockFields,
+      errors: null,
+    } as T
+  }
+
+  if (url.includes("/api/fields/pending")) {
+    return {
+      isSuccess: true,
+      message: null,
+      data: mockFields.filter((field) => field.status === "pending"),
+      errors: null,
+    } as T
+  }
+
+  if (url.includes("/api/fields/owner/")) {
+    return {
+      isSuccess: true,
+      message: null,
+      data: mockFields,
+      errors: null,
+    } as T
+  }
+
+  if (/\/api\/fields\/[^\/]+$/.test(url)) {
+    const id = url.split("/").pop()
+    const field = mockFields.find((item) => String(item.id) === String(id))
+
+    return {
+      isSuccess: true,
+      message: null,
+      data: field ?? null,
+      errors: null,
+    } as T
+  }
+
+  return {
+    isSuccess: true,
+    message: null,
+    data: mockFields,
+    errors: null,
+  } as T
+}
+
+ // ================= PLAYGROUNDS =================
+if (url.includes("/playgrounds") || url.includes("/api/playgrounds")) {
+  const mockFields =
+    typeof window !== "undefined"
+      ? JSON.parse(localStorage.getItem("mock_fields") || "[]")
+      : []
+
+  return {
+    isSuccess: true,
+    message: null,
+    data: mockFields.map((field: any) => ({
+      id: String(field.id),
+      name: { en: field.name, ar: field.name },
+      address: {
+        en: [field.address, field.city].filter(Boolean).join(", "),
+        ar: [field.address, field.city].filter(Boolean).join(", "),
+      },
+      pricePerHour: Number(field.pricePm || field.priceAm || 0),
+      rating: 4.8,
+      imageUrl: Array.isArray(field.photos)
+        ? field.photos[0]
+        : field.photos || "/placeholder.jpg",
+      slots: [
+        { startTime: "18:00", endTime: "19:00", slotKey: "18-19" },
+        { startTime: "19:00", endTime: "20:00", slotKey: "19-20" },
+        { startTime: "20:00", endTime: "21:00", slotKey: "20-21" },
       ],
-      errors: null,
-    } as T
-  }
-
+    })),
+    errors: null,
+  } as T
+}
   // ================= BOOKINGS =================
   if (
     options.method === "POST" &&
@@ -266,26 +317,98 @@ async function mockHandler<T>(url: string, options: RequestInit = {}): Promise<T
   }
 
   // ================= TOURNAMENTS =================
-  if (
-    options.method === "POST" &&
-    (url.includes("/tournaments") || url.includes("/api/tournaments"))
-  ) {
+const mockTournaments: any[] =
+  typeof window !== "undefined"
+    ? JSON.parse(localStorage.getItem("mock_tournaments") || "[]")
+    : []
+
+if (url.includes("/tournaments") || url.includes("/api/tournaments")) {
+  const body = typeof options.body === "string" ? JSON.parse(options.body) : {}
+
+  if (options.method === "POST" && (url === "/api/tournaments" || url === "/tournaments")) {
+    const newTournament = {
+      id: Date.now(),
+      ownerId: 1,
+      fieldId: body.fieldId ?? null,
+      name: body.name,
+      numberOfTeams: body.numberOfTeams,
+      teamsJoined: 0,
+      prize: body.prize,
+      description: body.description,
+      price: body.price,
+      type: body.type,
+      status: "open",
+      startDate: body.startDate,
+      endDate: body.endDate,
+      imageUrl: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    }
+
+    const nextTournaments = [...mockTournaments, newTournament]
+
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mock_tournaments", JSON.stringify(nextTournaments))
+    }
+
     return {
       isSuccess: true,
-      message: null,
+      message: "Mock tournament created",
+      data: newTournament,
+      errors: null,
+    } as T
+  }
+
+  if (options.method === "DELETE") {
+    const id = url.split("/").pop()
+
+    const nextTournaments = mockTournaments.filter(
+      (item) => String(item.id) !== String(id),
+    )
+
+    if (typeof window !== "undefined") {
+      localStorage.setItem("mock_tournaments", JSON.stringify(nextTournaments))
+    }
+
+    return {
+      isSuccess: true,
+      message: "Mock tournament deleted",
       data: null,
       errors: null,
     } as T
   }
 
-  if (url.includes("/tournaments") || url.includes("/api/tournaments")) {
+  if (url.includes("/api/tournaments/upcoming") || url.includes("/tournaments/upcoming")) {
     return {
       isSuccess: true,
       message: null,
-      data: [],
+      data: mockTournaments.slice(0, 2),
       errors: null,
     } as T
   }
+
+  if (/\/api\/tournaments\/[^\/]+$/.test(url) || /\/tournaments\/[^\/]+$/.test(url)) {
+    const id = url.split("/").pop()
+
+    const tournament = mockTournaments.find(
+      (item) => String(item.id) === String(id),
+    )
+
+    return {
+      isSuccess: true,
+      message: null,
+      data: tournament ?? null,
+      errors: null,
+    } as T
+  }
+
+  return {
+    isSuccess: true,
+    message: null,
+    data: mockTournaments,
+    errors: null,
+  } as T
+}
 
   console.warn(`[MOCK MODE] Missing mock for: ${url}`)
 
@@ -322,6 +445,19 @@ function getErrorMessage(data: unknown, fallback: string): string {
   }
 
   return fallback
+}
+function normalizeResponse<T>(data: unknown): T {
+  const safeData =
+    typeof data === "object" && data !== null
+      ? (data as Record<string, unknown>)
+      : {}
+
+  return {
+    status: safeData.status ?? (safeData.isSuccess === false ? 400 : 200),
+    message: safeData.message ?? null,
+    result: safeData.result ?? safeData.data ?? null,
+    errors: safeData.errors ?? null,
+  } as T
 }
 
 export async function http<T>(url: string, options: RequestInit = {}): Promise<T> {
@@ -411,5 +547,5 @@ export async function http<T>(url: string, options: RequestInit = {}): Promise<T
     throw new Error(message)
   }
 
-  return data as T
+ return normalizeResponse<T>(data)
 }

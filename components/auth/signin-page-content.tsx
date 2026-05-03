@@ -24,28 +24,58 @@ export function SignInPageContent({ accountType }: SignInPageContentProps) {
   const router = useRouter()
   const searchParams = useSearchParams()
   const resetSuccess = searchParams.get("reset") === "success"
+
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [email, setEmail] = useState("")
   const [phone, setPhone] = useState("")
   const [password, setPassword] = useState("")
+  const [error, setError] = useState("")
+
   const { t } = useTranslate()
   const { redirectPath, clearAction } = useResumePendingAction()
 
+  const getErrorMessage = (err: unknown) => {
+    if (err instanceof TypeError && err.message.toLowerCase().includes("fetch")) {
+      return "تعذر الاتصال بالخادم. تحقق من اتصال الإنترنت أو رابط API أو إعدادات CORS."
+    }
+
+    if (err instanceof Error && err.message.trim()) {
+      return err.message
+    }
+
+    return "حدث خطأ أثناء تسجيل الدخول. حاول مرة أخرى."
+  }
+
   const handleSubmit = async (e: React.FormEvent, mode: "email" | "phone") => {
     e.preventDefault()
+
+    if (isLoading) return
+
     setIsLoading(true)
+    setError("")
+
     const payload =
       mode === "email"
         ? { email: email.trim().toLowerCase(), password, accountType }
         : { phone: phone.replace(/\s+/g, ""), password, accountType }
 
-    await signIn(payload)
-    setIsLoading(false)
-    const nextRoute =
-      accountType === "player" && redirectPath ? redirectPath : getPostLoginRoute(accountType)
-    clearAction()
-    router.push(nextRoute)
+    try {
+      await signIn(payload)
+
+      const nextRoute =
+        accountType === "player" && redirectPath
+          ? redirectPath
+          : getPostLoginRoute(accountType)
+
+      clearAction()
+      router.push(nextRoute)
+    } catch (err) {
+      console.error("[SignIn] Error:", err)
+      setError(getErrorMessage(err))
+    } finally {
+      setIsLoading(false)
+    }
   }
 
   return (
@@ -62,16 +92,27 @@ export function SignInPageContent({ accountType }: SignInPageContentProps) {
             <CardTitle className="text-2xl">{t("auth.welcomeBack")}</CardTitle>
             <CardDescription>{t("auth.signInSubtitle")}</CardDescription>
           </CardHeader>
+
           <CardContent>
-            {resetSuccess && (
+            {resetSuccess ? (
               <div className="mb-4 rounded-md border border-emerald-200 bg-emerald-50 p-3 text-sm text-emerald-900">
                 {t("auth.passwordResetSuccess")}
               </div>
-            )}
+            ) : null}
+
+            {error ? (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                {error}
+              </div>
+            ) : null}
+
             <div className="mb-4 space-y-2">
               <RadioGroup
                 value={accountType}
-                onValueChange={(value) => router.push(getSignInRoute(value as AuthAccountType))}
+                onValueChange={(value) => {
+                  setError("")
+                  router.push(getSignInRoute(value as AuthAccountType))
+                }}
                 className="grid grid-cols-2 gap-2"
               >
                 <div>
@@ -83,6 +124,7 @@ export function SignInPageContent({ accountType }: SignInPageContentProps) {
                     {t("auth.accountTypePlayer")}
                   </Label>
                 </div>
+
                 <div>
                   <RadioGroupItem value="owner" id="signin-owner-account" className="peer sr-only" />
                   <Label
@@ -95,7 +137,7 @@ export function SignInPageContent({ accountType }: SignInPageContentProps) {
               </RadioGroup>
             </div>
 
-            <Tabs defaultValue="email" className="w-full">
+            <Tabs defaultValue="email" className="w-full" onValueChange={() => setError("")}>
               <TabsList className="grid w-full grid-cols-2">
                 <TabsTrigger value="email">{t("auth.email")}</TabsTrigger>
                 <TabsTrigger value="phone">{t("auth.phone")}</TabsTrigger>
@@ -113,7 +155,11 @@ export function SignInPageContent({ accountType }: SignInPageContentProps) {
                         placeholder={t("authForms.emailPlaceholder")}
                         className="ps-10"
                         value={email}
-                        onChange={(e) => setEmail(e.target.value)}
+                        onChange={(e) => {
+                          setEmail(e.target.value)
+                          setError("")
+                        }}
+                        disabled={isLoading}
                         required
                       />
                     </div>
@@ -126,6 +172,7 @@ export function SignInPageContent({ accountType }: SignInPageContentProps) {
                         {t("auth.forgotPassword")}
                       </Link>
                     </div>
+
                     <div className="relative">
                       <Lock className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
@@ -134,13 +181,18 @@ export function SignInPageContent({ accountType }: SignInPageContentProps) {
                         placeholder={t("auth.enterPassword")}
                         className="ps-10 pe-10"
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={(e) => {
+                          setPassword(e.target.value)
+                          setError("")
+                        }}
+                        disabled={isLoading}
                         required
                       />
                       <button
                         type="button"
-                        className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground disabled:opacity-50"
+                        onClick={() => setShowPassword((value) => !value)}
+                        disabled={isLoading}
                       >
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
@@ -165,7 +217,11 @@ export function SignInPageContent({ accountType }: SignInPageContentProps) {
                         placeholder="+20 1X XXX XXXX"
                         className="ps-10"
                         value={phone}
-                        onChange={(e) => setPhone(e.target.value)}
+                        onChange={(e) => {
+                          setPhone(e.target.value)
+                          setError("")
+                        }}
+                        disabled={isLoading}
                         required
                       />
                     </div>
@@ -178,6 +234,7 @@ export function SignInPageContent({ accountType }: SignInPageContentProps) {
                         {t("auth.forgotPassword")}
                       </Link>
                     </div>
+
                     <div className="relative">
                       <Lock className="absolute start-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                       <Input
@@ -186,13 +243,18 @@ export function SignInPageContent({ accountType }: SignInPageContentProps) {
                         placeholder={t("auth.enterPassword")}
                         className="ps-10 pe-10"
                         value={password}
-                        onChange={(e) => setPassword(e.target.value)}
+                        onChange={(e) => {
+                          setPassword(e.target.value)
+                          setError("")
+                        }}
+                        disabled={isLoading}
                         required
                       />
                       <button
                         type="button"
-                        className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
-                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute end-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground disabled:opacity-50"
+                        onClick={() => setShowPassword((value) => !value)}
+                        disabled={isLoading}
                       >
                         {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
                       </button>
