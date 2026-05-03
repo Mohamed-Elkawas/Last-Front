@@ -31,7 +31,7 @@ export default function OwnerTournamentsPage() {
   const { language, hasHydrated } = useAppTranslations()
   const { isAuthenticated, session, accountType, hasHydrated: authHydrated } = useAuth()
   const isArabic = language === "ar"
-  const isAdmin = session?.roles.includes("admin") ?? false
+  const isOwner = accountType === "owner"
 
   const [tournaments, setTournaments] = useState<TournamentRecord[]>([])
   const [loading, setLoading] = useState(true)
@@ -122,7 +122,7 @@ export default function OwnerTournamentsPage() {
   const rows = useMemo(() => tournaments, [tournaments])
 
   const handleDeleteTournament = async (tournamentId: string) => {
-    if (!isAdmin) {
+   if (!isOwner) {
       setErrorMessage(labels.noPermission)
       setDeletingTournament(null)
       return
@@ -170,7 +170,7 @@ export default function OwnerTournamentsPage() {
           <p className="mt-2 text-sm text-muted-foreground">{labels.subtitle}</p>
         </div>
 
-        {isAdmin ? (
+        {isOwner ? (
           <Button asChild className="w-fit bg-emerald-600 hover:bg-emerald-700">
             <Link href="/owner/tournaments/create">
               <PlusCircle className={isArabic ? "ml-2 h-4 w-4" : "mr-2 h-4 w-4"} />
@@ -185,13 +185,13 @@ export default function OwnerTournamentsPage() {
         )}
       </div>
 
-      {!isAdmin ? (
-        <Alert>
-          <AlertCircle className="h-4 w-4" />
-          <AlertTitle>{labels.title}</AlertTitle>
-          <AlertDescription>{labels.noPermission}</AlertDescription>
-        </Alert>
-      ) : null}
+{!isOwner ? (
+  <Alert>
+    <AlertCircle className="h-4 w-4" />
+    <AlertTitle>{labels.title}</AlertTitle>
+    <AlertDescription>{labels.noPermission}</AlertDescription>
+  </Alert>
+) : null}
 
       {errorMessage ? (
         <Alert variant="destructive">
@@ -235,7 +235,7 @@ export default function OwnerTournamentsPage() {
                       <Link href={`/owner/tournaments/${record.id}`}>{labels.manage}</Link>
                     </Button>
 
-                    {isAdmin ? (
+                    {isOwner ? (
                       <Button
                         size="sm"
                         variant="outline"

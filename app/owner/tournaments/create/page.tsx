@@ -46,7 +46,7 @@ export default function CreateTournamentPage() {
   const { language, hasHydrated } = useAppTranslations()
   const { session, hasHydrated: authHydrated, isAuthenticated, accountType } = useAuth()
   const isArabic = language === "ar"
-  const isAdmin = session?.roles.includes("admin") ?? false
+const isOwner = accountType === "owner"
 
   const [fields, setFields] = useState<FieldRecord[]>([])
   const [loadingFields, setLoadingFields] = useState(true)
@@ -71,7 +71,7 @@ export default function CreateTournamentPage() {
       : "Create a tournament linked to one of your real fields.",
     back: isArabic ? "العودة للبطولات" : "Back to tournaments",
     noPermission: isArabic
-      ? "إنشاء البطولات متاح فقط للحسابات التي تحمل صلاحية المشرف."
+      ? "إنشاء البطولات متاح فقط لصاحب الملعب."
       : "Tournament creation is only available for accounts with the admin role.",
     noFields: isArabic ? "لا توجد ملاعب متاحة" : "No fields available",
     noFieldsBody: isArabic
@@ -112,10 +112,10 @@ export default function CreateTournamentPage() {
       form.startDate.trim().length > 0 &&
       form.endDate.trim().length > 0 &&
       form.fieldId.trim().length > 0 &&
-      isAdmin &&
+      isOwner &&
       fields.length > 0
     )
-  }, [fields.length, form, isAdmin])
+  }, [fields.length, form, isOwner])
 
   const loadFields = useCallback(async () => {
     if (!session?.userId) {
@@ -276,7 +276,7 @@ export default function CreateTournamentPage() {
         <p className="mt-2 text-sm text-muted-foreground">{labels.subtitle}</p>
       </div>
 
-      {!isAdmin ? (
+      {!isOwner ? (
         <Alert>
           <AlertCircle className="h-4 w-4" />
           <AlertTitle>{labels.title}</AlertTitle>
